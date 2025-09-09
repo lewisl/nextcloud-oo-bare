@@ -1,0 +1,315 @@
+Nextcloud 31.0.8
+
+Usage:
+  command [options] [arguments]
+
+Options:
+  -h, --help            Display help for the given command. When no command is given display help for the list command
+  -q, --quiet           Do not output any message
+  -V, --version         Display this application version
+      --ansi|--no-ansi  Force (or disable --no-ansi) ANSI output
+  -n, --no-interaction  Do not ask any interactive question
+      --no-warnings     Skip global warnings, show command output only
+  -v|vv|vvv, --verbose  Increase the verbosity of messages: 1 for normal output, 2 for more verbose output and 3 for debug
+
+Available commands:
+  check                                  check dependencies of the server environment
+  completion                             Dump the shell completion script
+  help                                   Display help for a command
+  list                                   List commands
+  setupchecks                            Run setup checks and output the results
+  status                                 show some status information
+  upgrade                                run upgrade routines after installation of a new release. The release has to be installed before.
+ activity
+  activity:send-mails                    Sends the activity notification mails
+ admin-delegation
+  admin-delegation:add                   add setting delegation to a group
+  admin-delegation:remove                remove settings delegation from a group
+  admin-delegation:show                  show delegated settings
+ app
+  app:disable                            disable an app
+  app:enable                             enable an app
+  app:getpath                            Get an absolute path to the app directory
+  app:install                            install an app
+  app:list                               List all available apps
+  app:remove                             remove an app
+  app:update                             update an app or all apps
+ app_api
+  app_api:app:config:delete              Delete ExApp configs
+  app_api:app:config:get                 Get ExApp config
+  app_api:app:config:list                List ExApp configs
+  app_api:app:config:set                 Set ExApp config
+  app_api:app:deploy                     Deploy ExApp on configured daemon
+  app_api:app:disable                    Disable registered external app
+  app_api:app:enable                     Enable registered external app
+  app_api:app:list                       List ExApps
+  app_api:app:register                   Install external App
+  app_api:app:unregister                 Unregister external app
+  app_api:app:update                     Update ExApp
+  app_api:daemon:list                    List registered daemons
+  app_api:daemon:register                Register daemon config for ExApp deployment
+  app_api:daemon:unregister              Unregister daemon
+ background
+  background:cron                        [background:ajax|background:webcron] Use cron, ajax or webcron to run background jobs
+ background-job
+  background-job:delete                  Remove a background job from database
+  background-job:execute                 Execute a single background job manually
+  background-job:list                    List background jobs
+  background-job:worker                  Run a background job worker
+ broadcast
+  broadcast:test                         test the SSE broadcaster
+ circles
+  circles:check                          Checking your configuration
+  circles:maintenance                    Clean stuff, keeps the app running
+  circles:manage:config                  edit config/type of a Circle
+  circles:manage:create                  create a new circle
+  circles:manage:destroy                 destroy a circle by its ID
+  circles:manage:details                 get details about a circle by its ID
+  circles:manage:edit                    edit displayName or description of a Circle
+  circles:manage:join                    emulate a user joining a Circle
+  circles:manage:leave                   simulate a user joining a Circle
+  circles:manage:list                    listing current circles
+  circles:manage:setting                 edit setting for a Circle
+  circles:members:add                    Add a member to a Circle
+  circles:members:details                get details about a member by its ID
+  circles:members:level                  Change the level of a member from a Circle
+  circles:members:list                   listing Members from a Circle
+  circles:members:remove                 remove a member from a circle
+  circles:members:search                 Change the level of a member from a Circle
+  circles:memberships                    index and display memberships for local and federated users
+  circles:migrate:customgroups           
+  circles:remote                         remote features
+  circles:shares:files                   listing shares files
+  circles:sync                           Sync Circles and Members
+  circles:test                           testing some features
+ config
+  config:app:delete                      Delete an app config value
+  config:app:get                         Get an app config value
+  config:app:set                         Set an app config value
+  config:import                          Import a list of configs
+  config:list                            List all configs
+  config:system:delete                   Delete a system config value
+  config:system:get                      Get a system config value
+  config:system:set                      Set a system config value
+ dav
+  dav:absence:get                        
+  dav:absence:set                        
+  dav:clear-calendar-unshares            Clear calendar unshares for a user
+  dav:clear-contacts-photo-cache         Clear cached contact photos
+  dav:create-addressbook                 Create a dav addressbook
+  dav:create-calendar                    Create a dav calendar
+  dav:create-subscription                Create a dav subscription
+  dav:delete-calendar                    Delete a dav calendar
+  dav:fix-missing-caldav-changes         Insert missing calendarchanges rows for existing events
+  dav:list-addressbooks                  List all addressbooks of a user
+  dav:list-calendar-shares               List all calendar shares for a user
+  dav:list-calendars                     List all calendars of a user
+  dav:move-calendar                      Move a calendar from an user to another
+  dav:remove-invalid-shares              Remove invalid dav shares
+  dav:retention:clean-up                 
+  dav:send-event-reminders               Sends event reminders
+  dav:sync-birthday-calendar             Synchronizes the birthday calendar
+  dav:sync-system-addressbook            Synchronizes users to the system addressbook
+ db
+  db:add-missing-columns                 Add missing optional columns to the database tables
+  db:add-missing-indices                 Add missing indices to the database tables
+  db:add-missing-primary-keys            Add missing primary keys to the database tables
+  db:convert-filecache-bigint            Convert the ID columns of the filecache to BigInt
+  db:convert-mysql-charset               Convert charset of MySQL/MariaDB to use utf8mb4
+  db:convert-type                        Convert the Nextcloud database to the newly configured one
+  db:schema:expected                     Export the expected database schema for a fresh installation
+  db:schema:export                       Export the current database schema
+ encryption
+  encryption:change-key-storage-root     Change key storage root
+  encryption:decrypt-all                 Disable server-side encryption and decrypt all files
+  encryption:disable                     Disable encryption
+  encryption:enable                      Enable encryption
+  encryption:encrypt-all                 Encrypt all files for all users
+  encryption:list-modules                List all available encryption modules
+  encryption:migrate-key-storage-format  Migrate the format of the keystorage to a newer format
+  encryption:set-default-module          Set the encryption default module
+  encryption:show-key-storage-root       Show current key storage root
+  encryption:status                      Lists the current status of encryption
+ federation
+  federation:sync-addressbooks           Synchronizes addressbooks of all federated clouds
+ files
+  files:cleanup                          Clean up orphaned filecache and mount entries
+  files:copy                             Copy a file or folder
+  files:delete                           Delete a file or folder
+  files:get                              Get the contents of a file
+  files:move                             Move a file or folder
+  files:object:delete                    Delete an object from the object store
+  files:object:get                       Get the contents of an object
+  files:object:info                      Get the metadata of an object
+  files:object:list                      List all objects in the object store
+  files:object:orphans                   List all objects in the object store that don't have a matching entry in the database
+  files:object:put                       Write a file to the object store
+  files:put                              Write contents of a file
+  files:recommendations:recommend        Shows recommended files for an account
+  files:reminders                        List file reminders
+  files:repair-tree                      Try and repair malformed filesystem tree structures
+  files:sanitize-filenames               Renames files to match naming constraints
+  files:scan                             rescan filesystem
+  files:scan-app-data                    rescan the AppData folder
+  files:transfer-ownership               All files and folders are moved to another user - outgoing shares and incoming user file shares (optionally) are moved as well.
+  files:windows-compatible-filenames     Enforce naming constraints for windows compatible filenames
+ group
+  group:add                              Add a group
+  group:adduser                          add a user to a group
+  group:delete                           Remove a group
+  group:info                             Show information about a group
+  group:list                             list configured groups
+  group:removeuser                       remove a user from a group
+ info
+  info:file                              get information for a file
+  info:file:space                        Summarize space usage of specified folder
+  info:storage                           Get information a single storage
+  info:storages                          List storages ordered by the number of files
+ integrity
+  integrity:check-app                    Check integrity of an app using a signature.
+  integrity:check-core                   Check integrity of core code using a signature.
+  integrity:sign-app                     Signs an app using a private key.
+  integrity:sign-core                    Sign core using a private key.
+ l10n
+  l10n:createjs                          Create javascript translation files for a given app
+ log
+  log:file                               manipulate logging backend
+  log:manage                             manage logging configuration
+  log:tail                               Tail the nextcloud logfile
+  log:watch                              Watch the nextcloud logfile
+ maintenance
+  maintenance:data-fingerprint           update the systems data-fingerprint after a backup is restored
+  maintenance:mimetype:update-db         Update database mimetypes and update filecache
+  maintenance:mimetype:update-js         Update mimetypelist.js
+  maintenance:mode                       Show or toggle maintenance mode status
+  maintenance:repair                     repair this installation
+  maintenance:repair-share-owner         repair invalid share-owner entries in the database
+  maintenance:theme:update               Apply custom theme changes
+  maintenance:update:htaccess            Updates the .htaccess file
+ memcache
+  memcache:redis:command                 Send raw redis command to the configured redis server
+ metadata
+  metadata:get                           get stored metadata about a file, by its id
+ migrations
+  migrations:preview                     Get preview of available DB migrations in case of initiating an upgrade
+ notification
+  notification:delete                    Delete a generated admin notification for the given user
+  notification:generate                  Generate a notification for the given user
+  notification:test-push                 Generate a notification for the given user
+ onlyoffice
+  onlyoffice:documentserver              Manage document server
+ photos
+  photos:albums:add                      Add specified photo to album
+  photos:albums:create                   Create a new album for a user
+  photos:update-1000-cities              Update the list of 1000 and more inhabitant cities
+ preview
+  preview:cleanup                        Removes existing preview files
+  preview:generate                       generate a preview for a file
+  preview:repair                         distributes the existing previews into subfolders
+  preview:reset-rendered-texts           Deletes all generated avatars and previews of text and md files
+ router
+  router:list                            Find the target of a route or all routes of an app
+  router:match                           Match a URL to the target route
+ security
+  security:bruteforce:attempts           Show bruteforce attempts status for a given IP address
+  security:bruteforce:reset              resets bruteforce attempts for given IP address
+  security:certificates                  list trusted certificates
+  security:certificates:export           export the certificate bundle
+  security:certificates:import           import trusted certificate in PEM format
+  security:certificates:remove           remove trusted certificate
+ serverinfo
+  serverinfo:update-storage-statistics   Triggers an update of the counts related to storages used in serverinfo
+ sharing
+  sharing:cleanup-remote-storages        Cleanup shared storage entries that have no matching entry in the shares_external table
+  sharing:delete-orphan-shares           Delete shares where the owner no longer has access to the file
+  sharing:expiration-notification        Notify share initiators when a share will expire the next day.
+  sharing:fix-share-owners               Fix owner of broken shares after transfer ownership on old versions
+ support
+  support:report                         Generate a system report
+ tag
+  tag:add                                Add new tag
+  tag:delete                             delete a tag
+  tag:edit                               edit tag attributes
+  tag:list                               list tags
+ talk
+  talk:active-calls                      Allows you to check if calls are currently in process
+  talk:bot:install                       Install a new bot on the server
+  talk:bot:list                          List all installed bots of the server or a conversation
+  talk:bot:remove                        Remove a bot from a conversation
+  talk:bot:setup                         Add a bot to a conversation
+  talk:bot:state                         Change the state or feature list for a bot
+  talk:bot:uninstall                     Uninstall a bot from the server
+  talk:monitor:calls                     Prints a list with conversations that have an active call as well as their participant count
+  talk:monitor:room                      Prints the number of attendees, active sessions and participant in the call.
+  talk:phone-number:add                  Add a mapping entry to map a phone number to an user
+  talk:phone-number:find                 Find a phone number or the phone number of an user
+  talk:phone-number:import               Import a CSV list (format: "number","user") for SIP dial-in
+  talk:phone-number:remove               Remove a mapping entry by phone number
+  talk:phone-number:remove-user          Remove mapping entries by user
+  talk:recording:consent                 List all matching consent that were given to be audio and video recorded during a call (requires administrator or moderator configuration)
+  talk:room:add                          Adds users to a room
+  talk:room:create                       Create a new room
+  talk:room:delete                       Deletes a room
+  talk:room:demote                       Demotes participants of a room to regular users
+  talk:room:promote                      Promotes participants of a room to moderators
+  talk:room:remove                       Remove users from a room
+  talk:room:update                       Updates a room
+  talk:signaling:add                     Add an external signaling server.
+  talk:signaling:delete                  Remove an existing signaling server.
+  talk:signaling:list                    List external signaling servers.
+  talk:signaling:verify-keys             Verify if the stored public key matches the stored private key for the signaling server
+  talk:stun:add                          Add a new STUN server.
+  talk:stun:delete                       Remove an existing STUN server.
+  talk:stun:list                         List STUN servers.
+  talk:turn:add                          Add a TURN server.
+  talk:turn:delete                       Remove an existing TURN server.
+  talk:turn:list                         List TURN servers.
+  talk:user:remove                       Remove a user from all their rooms
+  talk:user:transfer-ownership           Adds the destination-user with the same participant type to all (not one-to-one) conversations of source-user
+ taskprocessing
+  taskprocessing:task-type:set-enabled   Enable or disable a task type
+  taskprocessing:task:get                Display all information for a specific task
+  taskprocessing:task:list               list tasks
+  taskprocessing:task:stats              get statistics for tasks
+ text
+  text:reset                             Reset a text document session to the current file content
+ theming
+  theming:config                         Set theming app config values
+ trashbin
+  trashbin:cleanup                       Remove deleted files
+  trashbin:expire                        Expires the users trashbin
+  trashbin:restore                       Restore all deleted files according to the given filters
+  trashbin:size                          Configure the target trashbin size
+ twofactorauth
+  twofactorauth:cleanup                  Clean up the two-factor user-provider association of an uninstalled/removed provider
+  twofactorauth:disable                  Disable two-factor authentication for a user
+  twofactorauth:enable                   Enable two-factor authentication for a user
+  twofactorauth:enforce                  Enabled/disable enforced two-factor authentication
+  twofactorauth:state                    Get the two-factor authentication (2FA) state of a user
+ update
+  update:check                           Check for server and app updates
+ user
+  user:add                               adds an account
+  user:auth-tokens:add                   [user:add-app-password] Add app password for the named account
+  user:auth-tokens:delete                Deletes an authentication token
+  user:auth-tokens:list                  List authentication tokens of an user
+  user:clear-avatar-cache                clear avatar cache
+  user:delete                            deletes the specified user
+  user:disable                           disables the specified user
+  user:enable                            enables the specified user
+  user:info                              show user info
+  user:keys:verify                       Verify if the stored public key matches the stored private key
+  user:lastseen                          shows when the user was logged in last time
+  user:list                              list configured users
+  user:report                            shows how many users have access
+  user:resetpassword                     Resets the password of the named user
+  user:setting                           Read and modify user settings
+  user:sync-account-data                 sync user backend data to accounts table for configured users
+  user:welcome                           Sends the welcome email
+ versions
+  versions:cleanup                       Delete versions
+  versions:expire                        Expires the users file versions
+ webhook_listeners
+  webhook_listeners:list                 Lists configured webhook listeners
+ workflows
+  workflows:list                         Lists configured workflows

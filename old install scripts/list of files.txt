@@ -1,0 +1,65 @@
+toolkit
+==================
+CHANGELOG.md
+LICENSE
+QUICK-REFERENCE.md
+README.md
+onlyoffice-exec.sh
+onlyoffice-health.sh
+onlyoffice-logs.sh
+onlyoffice-post-install.sh
+onlyoffice-pre-install.sh
+onlyoffice-restart.sh
+onlyoffice-start.sh
+onlyoffice-status.sh
+onlyoffice-stop.sh
+<end>
+
+pre-repo is /root/onlyoffice_deploy
+====================
+CHANGELOG.md
+LICENSE
+QUICK-REFERENCE.md
+README.md
+onlyoffice-exec.sh
+onlyoffice-health.sh
+onlyoffice-logs.sh
+onlyoffice-post-install.sh
+onlyoffice-pre-install.sh
+onlyoffice-restart.sh
+onlyoffice-start.sh
+onlyoffice-status.sh
+onlyoffice-stop.sh
+<end>
+
+/usr/local/bin
+=======================
+.
+..
+onlyoffice-discovery -> /usr/local/bin/onlyoffice-tools/onlyoffice-discovery.sh
+onlyoffice-discovery-v2 -> /usr/local/bin/onlyoffice-tools/onlyoffice-discovery-v2.sh
+onlyoffice-exec -> /usr/local/bin/onlyoffice-tools/onlyoffice-exec.sh
+onlyoffice-health -> /usr/local/bin/onlyoffice-tools/onlyoffice-health.sh
+onlyoffice-logs -> /usr/local/bin/onlyoffice-tools/onlyoffice-logs.sh
+onlyoffice-restart -> /usr/local/bin/onlyoffice-tools/onlyoffice-restart.sh
+onlyoffice-start -> /usr/local/bin/onlyoffice-tools/onlyoffice-start.sh
+onlyoffice-status -> /usr/local/bin/onlyoffice-tools/onlyoffice-status.sh
+onlyoffice-stop -> /usr/local/bin/onlyoffice-tools/onlyoffice-stop.sh
+onlyoffice-tools
+onlyoffice-uninstall -> /usr/local/bin/onlyoffice-tools/onlyoffice-uninstall.sh
+<end>
+
+/usr/local/bin/onlyoffice-tools
+==================================
+
+onlyoffice-discovery-v2.sh
+onlyoffice-discovery.sh
+onlyoffice-exec.sh
+onlyoffice-health.sh
+onlyoffice-logs.sh
+onlyoffice-restart.sh
+onlyoffice-start.sh
+onlyoffice-status.sh
+onlyoffice-stop.sh
+onlyoffice-uninstall.sh
+<end>
