@@ -30,19 +30,39 @@ fi
 echo "Starting database services..."
 systemctl start mariadb
 
-# Start PostgreSQL - Ubuntu uses version-specific services
-systemctl start postgresql@16-main || systemctl start postgresql
-systemctl enable postgresql@16-main || systemctl enable postgresql
+# Check if PostgreSQL cluster exists, create if needed
+echo "Checking PostgreSQL cluster..."
+if ! pg_lsclusters | grep -q "16.*main"; then
+    echo "Creating PostgreSQL cluster 16/main..."
+    pg_createcluster 16 main
+    if [ $? -ne 0 ]; then
+        echo "Error: Failed to create PostgreSQL cluster"
+        exit 1
+    fi
+fi
+
+# Start PostgreSQL cluster
+echo "Starting PostgreSQL cluster..."
+pg_ctlcluster 16 main start || {
+    echo "Error: Failed to start PostgreSQL cluster"
+    exit 1
+}
+
+# Enable PostgreSQL service
+systemctl enable postgresql
 
 # Wait for services to start
 sleep 5
 
 # Verify PostgreSQL is running
-if ! systemctl is-active --quiet postgresql@16-main && ! systemctl is-active --quiet postgresql; then
-    echo "Error: PostgreSQL failed to start"
-    echo "Try manually: sudo systemctl start postgresql@16-main"
+if ! pg_lsclusters | grep -q "16.*main.*online"; then
+    echo "Error: PostgreSQL cluster is not online"
+    echo "Cluster status:"
+    pg_lsclusters
     exit 1
 fi
+
+echo "PostgreSQL cluster is online"
 
 # Generate random passwords
 NEXTCLOUD_DB_PASSWORD=$(openssl rand -base64 24)
@@ -56,14 +76,25 @@ echo ""
 echo "=== Configuring MariaDB for Nextcloud ==="
 
 # Create Nextcloud database and user in MariaDB
-mysql -e "CREATE DATABASE IF NOT EXISTS nextcloud CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;" 2>/dev/null || {
-    echo "Nextcloud database creation failed. May already exist."
+mysql -e "CREATE DATABASE IF NOT EXISTS nextcloud CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;" || {
+    echo "Error: Failed to create nextcloud database"
+    exit 1
 }
 
-mysql -e "CREATE USER IF NOT EXISTS 'nextcloud'@'localhost' IDENTIFIED BY '$NEXTCLOUD_DB_PASSWORD';" 2>/dev/null || {
-    echo "Nextcloud user creation failed. May already exist. Updating password..."
-    mysql -e "ALTER USER 'nextcloud'@'localhost' IDENTIFIED BY '$NEXTCLOUD_DB_PASSWORD';"
-}
+# Check if user exists and handle accordingly
+if mysql -e "SELECT User FROM mysql.user WHERE User='nextcloud' AND Host='localhost';" | grep -q nextcloud; then
+    echo "Nextcloud user already exists. Updating password..."
+    mysql -e "ALTER USER 'nextcloud'@'localhost' IDENTIFIED BY '$NEXTCLOUD_DB_PASSWORD';" || {
+        echo "Error: Failed to update nextcloud user password"
+        exit 1
+    }
+else
+    echo "Creating nextcloud user..."
+    mysql -e "CREATE USER 'nextcloud'@'localhost' IDENTIFIED BY '$NEXTCLOUD_DB_PASSWORD';" || {
+        echo "Error: Failed to create nextcloud user"
+        exit 1
+    }
+fi
 
 mysql -e "GRANT ALL PRIVILEGES ON nextcloud.* TO 'nextcloud'@'localhost';"
 mysql -e "FLUSH PRIVILEGES;"
@@ -74,17 +105,36 @@ echo ""
 echo "=== Configuring PostgreSQL for OnlyOffice ==="
 
 # Configure PostgreSQL for OnlyOffice
-# Create user and database
-sudo -u postgres psql -c "CREATE USER onlyoffice WITH PASSWORD '$ONLYOFFICE_DB_PASSWORD';" 2>/dev/null || {
-    echo "OnlyOffice user may already exist. Updating password..."
-    sudo -u postgres psql -c "ALTER USER onlyoffice WITH PASSWORD '$ONLYOFFICE_DB_PASSWORD';"
-}
+# Check if user exists and handle accordingly
+if sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='onlyoffice'" | grep -q 1; then
+    echo "OnlyOffice user already exists. Updating password..."
+    sudo -u postgres psql -c "ALTER USER onlyoffice WITH PASSWORD '$ONLYOFFICE_DB_PASSWORD';" || {
+        echo "Error: Failed to update onlyoffice user password"
+        exit 1
+    }
+else
+    echo "Creating onlyoffice user..."
+    sudo -u postgres psql -c "CREATE USER onlyoffice WITH PASSWORD '$ONLYOFFICE_DB_PASSWORD';" || {
+        echo "Error: Failed to create onlyoffice user"
+        exit 1
+    }
+fi
 
-sudo -u postgres psql -c "CREATE DATABASE onlyoffice OWNER onlyoffice;" 2>/dev/null || {
-    echo "OnlyOffice database may already exist."
-}
+# Check if database exists and create if needed
+if sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw onlyoffice; then
+    echo "OnlyOffice database already exists."
+else
+    echo "Creating onlyoffice database..."
+    sudo -u postgres psql -c "CREATE DATABASE onlyoffice OWNER onlyoffice;" || {
+        echo "Error: Failed to create onlyoffice database"
+        exit 1
+    }
+fi
 
-sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE onlyoffice TO onlyoffice;"
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE onlyoffice TO onlyoffice;" || {
+    echo "Error: Failed to grant privileges to onlyoffice user"
+    exit 1
+}
 
 echo "PostgreSQL configured: database 'onlyoffice' with user 'onlyoffice'"
 
