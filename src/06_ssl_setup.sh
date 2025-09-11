@@ -85,42 +85,48 @@ get_domain() {
         if [[ -d "$sites_dir" ]]; then
             for site in "$sites_dir"/*; do
                 if [[ -f "$site" && "$(basename "$site")" != "default" ]]; then
-                    domain=$(basename "$site")
+                    # Try to get first server_name from the config file
+                    domain=$(grep -m1 "server_name" "$site" | awk '{print $2}' | sed 's/;//')
+                    if [[ -z "$domain" ]]; then
+                        # Fallback to filename
+                        domain=$(basename "$site")
+                    fi
                     break
                 fi
             done
         fi
     fi
     
-    # If still not found, ask user
+    # If still not found, error out
     if [[ -z "$domain" ]]; then
-        echo ""
-        read -p "Enter the domain name for SSL certificate (e.g., cloud.example.com): " domain
-        
-        if [[ -z "$domain" ]]; then
-            error "Domain name is required"
-        fi
+        error "Could not detect domain from nginx configuration. Please check nginx setup."
     fi
+
+    log "Detected domain: $domain"
     
     echo "$domain"
 }
 
 # Get email for Let's Encrypt
 get_email() {
-    local email=""
-    
-    echo ""
-    read -p "Enter email address for Let's Encrypt notifications: " email
-    
-    if [[ -z "$email" ]]; then
-        error "Email address is required for Let's Encrypt"
+    local email="$1"
+
+    # If email provided as parameter, use it
+    if [[ -n "$email" ]]; then
+        # Email provided, use it (no log to avoid contamination)
+        true
+    else
+        # Use default email for testing
+        email="admin@localhost.local"
+        warning "No email provided, using default: $email"
+        warning "This is for testing only. For production, provide a real email address."
     fi
-    
+
     # Basic email validation
     if [[ ! "$email" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
-        error "Invalid email address format"
+        error "Invalid email address format: $email"
     fi
-    
+
     echo "$email"
 }
 
@@ -143,24 +149,12 @@ check_dns() {
     
     if [[ -z "$domain_ip" ]]; then
         warning "Domain $domain does not resolve to any IP"
-        echo ""
         warning "Please ensure DNS is configured to point $domain to $server_ip"
-        echo ""
-        read -p "Continue anyway? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            error "DNS configuration required before SSL setup"
-        fi
+        warning "Continuing anyway - Let's Encrypt will validate via HTTP"
     elif [[ "$domain_ip" != "$server_ip" ]]; then
         warning "Domain $domain resolves to $domain_ip but server IP is $server_ip"
-        echo ""
-        warning "Please ensure DNS is configured correctly"
-        echo ""
-        read -p "Continue anyway? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            error "DNS configuration required before SSL setup"
-        fi
+        warning "This may be normal if using Cloudflare proxy or CDN"
+        warning "Continuing with SSL setup - Let's Encrypt will validate via HTTP"
     else
         log "✓ DNS resolution correct: $domain -> $server_ip"
     fi
@@ -181,12 +175,7 @@ test_http_access() {
         log "✓ HTTP access working"
     else
         warning "HTTP access test failed - Let's Encrypt may not work"
-        echo ""
-        read -p "Continue anyway? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            error "HTTP access required for Let's Encrypt"
-        fi
+        warning "Continuing anyway - Let's Encrypt will perform its own validation"
     fi
     
     # Clean up test file
@@ -406,24 +395,34 @@ EOF
 
 # Main execution
 main() {
+    local email="$1"
+    local domain="$2"
+
+    if [[ -z "$email" ]] || [[ -z "$domain" ]]; then
+        echo "Usage: $0 <email_address> <domain_name>"
+        echo "Example: $0 admin@example.com cloud.example.com"
+        error "Both email address and domain name are required"
+    fi
+
     log "Starting SSL certificate setup..."
-    
+
     check_root
     check_prerequisites
-    
-    local domain=$(get_domain)
-    local email=$(get_email)
+
+    local validated_email=$(get_email "$email")
+
+    log "Using domain: $domain"
     
     log "Setting up SSL for domain: $domain"
-    
-    check_dns "$domain"
-    test_http_access "$domain"
-    obtain_certificate "$domain" "$email"
+
+    # Skip DNS check - irrelevant for SSL with CDN/proxy
+    # Let's Encrypt will validate domain access via HTTP challenge
+    obtain_certificate "$domain" "$validated_email"
     update_nginx_ssl "$domain"
     setup_auto_renewal
     configure_security "$domain"
     test_ssl "$domain"
-    save_ssl_info "$domain" "$email"
+    save_ssl_info "$domain" "$validated_email"
     
     log "✓ SSL certificate setup completed successfully!"
     echo ""

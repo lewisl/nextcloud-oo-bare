@@ -111,6 +111,7 @@ setup_nextcloud_database() {
     # Create database and user
     mysql -e "CREATE DATABASE IF NOT EXISTS \`$NEXTCLOUD_DB_NAME\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
     mysql -e "CREATE USER IF NOT EXISTS '$NEXTCLOUD_DB_USER'@'localhost' IDENTIFIED BY '$nextcloud_password';"
+    mysql -e "ALTER USER '$NEXTCLOUD_DB_USER'@'localhost' IDENTIFIED BY '$nextcloud_password';"
     mysql -e "GRANT ALL PRIVILEGES ON \`$NEXTCLOUD_DB_NAME\`.* TO '$NEXTCLOUD_DB_USER'@'localhost';"
     mysql -e "FLUSH PRIVILEGES;"
     
@@ -229,8 +230,8 @@ test_connections() {
     fi
     
     # Test Nextcloud database
-    source /root/nextcloud-db-credentials.txt
-    if mysql -u "$NEXTCLOUD_DB_USER" -p"$(grep Password /root/nextcloud-db-credentials.txt | cut -d' ' -f2)" -e "SELECT 1;" &> /dev/null; then
+    local nc_password=$(grep "Password:" /root/nextcloud-db-credentials.txt | cut -d' ' -f2)
+    if mysql -u "$NEXTCLOUD_DB_USER" -p"$nc_password" -e "SELECT 1;" &> /dev/null; then
         log "✓ Nextcloud database connection successful"
     else
         error "✗ Nextcloud database connection failed"

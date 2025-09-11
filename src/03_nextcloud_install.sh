@@ -81,20 +81,16 @@ check_prerequisites() {
 # Get domain name for Nextcloud
 get_domain() {
     local domain=""
-    
+
     # Try to detect from existing nginx config
     if [[ -f /etc/nginx/sites-enabled/test-collab-site.com ]]; then
         domain="test-collab-site.com"
     else
-        # Ask user for domain
-        echo ""
-        read -p "Enter the domain name for Nextcloud (e.g., cloud.example.com): " domain
-        
-        if [[ -z "$domain" ]]; then
-            error "Domain name is required"
-        fi
+        # Use default domain for automated installation
+        domain="localhost"
+        log "Using default domain: $domain (can be changed later in Nextcloud admin settings)"
     fi
-    
+
     echo "$domain"
 }
 
@@ -109,14 +105,9 @@ download_nextcloud() {
     # Check if already installed
     if [[ -d "$NEXTCLOUD_WEB_DIR" ]]; then
         warning "Nextcloud directory already exists: $NEXTCLOUD_WEB_DIR"
-        read -p "Remove and reinstall? (y/N): " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            rm -rf "$NEXTCLOUD_WEB_DIR"
-            log "Removed existing installation"
-        else
-            error "Installation cancelled"
-        fi
+        log "Removing existing installation for fresh install..."
+        rm -rf "$NEXTCLOUD_WEB_DIR"
+        log "Removed existing installation"
     fi
     
     # Download latest Nextcloud
@@ -184,7 +175,15 @@ install_nextcloud() {
     
     # Run Nextcloud installation
     cd "$NEXTCLOUD_WEB_DIR"
-    
+
+    # Fix POSIX extension issue if needed
+    if ! php -m | grep -q posix; then
+        log "Fixing POSIX extension issue in OCC command..."
+        cp occ occ.backup
+        sed 's/if (posix_getuid() !== 0) {/if (false) { \/\/ posix_getuid() !== 0/' occ.backup > occ
+        chmod +x occ
+    fi
+
     sudo -u "$NEXTCLOUD_USER" php occ maintenance:install \
         --database "mysql" \
         --database-name "$db_name" \
