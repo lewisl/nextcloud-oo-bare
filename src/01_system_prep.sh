@@ -115,22 +115,25 @@ install_packages() {
     # Web server and PHP
     local php_packages=(
         "nginx"
-        "php-fpm"
-        "php-cli"
-        "php-mysql"
-        "php-pgsql"
-        "php-xml"
-        "php-gd"
-        "php-curl"
-        "php-mbstring"
-        "php-intl"
-        "php-bcmath"
-        "php-gmp"
-        "php-zip"
-        "php-bz2"
-        "php-imagick"
-        "php-redis"
-        "php-apcu"
+        "php8.3-fpm"
+        "php8.3-cli"
+        "php8.3-mysql"
+        "php8.3-pgsql"
+        "php8.3-xml"
+        "php8.3-gd"
+        "php8.3-curl"
+        "php8.3-mbstring"
+        "php8.3-intl"
+        "php8.3-bcmath"
+        "php8.3-gmp"
+        "php8.3-zip"
+        "php8.3-bz2"
+        "php8.3-imagick"
+        "php8.3-redis"
+        "php8.3-apcu"
+        "php8.3-common"
+        "php8.3-opcache"
+        "php8.3-readline"
     )
     
     # Database servers
@@ -159,8 +162,57 @@ install_packages() {
     
     # Install all packages
     apt install -y "${php_packages[@]}" "${db_packages[@]}" "${system_packages[@]}"
-    
+
     log "Core packages installed successfully"
+
+    # Verify PHP installation
+    verify_php_installation
+}
+
+# Verify PHP modules are properly installed
+verify_php_installation() {
+    log "Verifying PHP installation..."
+
+    # Check PHP version
+    local php_version=$(php --version | head -1)
+    log "PHP Version: $php_version"
+
+    # Critical modules that must be present
+    local required_modules=(
+        "posix"
+        "SimpleXML"
+        "xml"
+        "gd"
+        "curl"
+        "mbstring"
+        "mysqli"
+        "pgsql"
+        "zip"
+        "bcmath"
+        "gmp"
+        "intl"
+        "Zend OPcache"
+    )
+
+    local missing_modules=()
+
+    for module in "${required_modules[@]}"; do
+        if ! php -m | grep -q "^$module$"; then
+            missing_modules+=("$module")
+        fi
+    done
+
+    if [[ ${#missing_modules[@]} -gt 0 ]]; then
+        error "Missing PHP modules: ${missing_modules[*]}"
+    fi
+
+    # Enable required modules if they exist but aren't enabled
+    phpenmod xml simplexml posix opcache 2>/dev/null || true
+
+    # Restart PHP-FPM
+    systemctl restart php8.3-fpm
+
+    log "PHP installation verified successfully"
 }
 
 # Configure firewall

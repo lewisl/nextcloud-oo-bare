@@ -1,254 +1,199 @@
 # Quick Start Guide
 
-Get Nextcloud + OnlyOffice running in under 30 minutes!
-
 ## Prerequisites Checklist
 
-Before starting, ensure you have:
+Before running any scripts, ensure you have:
 
-- [ ] **Fresh Ubuntu 20.04+ or Debian 11+ server**
-- [ ] **Root access** (sudo privileges)
-- [ ] **Domain name** pointing to your server's IP
-- [ ] **Email address** for SSL certificates
-- [ ] **Minimum 4GB RAM, 2 CPU cores, 20GB storage**
+- [ ] Ubuntu 22.04+ server with root access
+- [ ] Domain name with DNS A records pointing to server IPv4
+- [ ] Email address for SSL certificates
+- [ ] Server IPv4 address (no IPv6)
 
-## Step 1: Prepare Your Server
+## Required Information
 
-### Update the system
+Gather this information before starting:
+
 ```bash
-sudo apt update && sudo apt upgrade -y
+# Your domain name
+DOMAIN="cloud.example.com"
+
+# Your email for Let's Encrypt
+EMAIL="admin@example.com"
+
+# Your server's IPv4 address
+SERVER_IP="1.2.3.4"
 ```
 
-### Download the installation scripts
-```bash
-# Option A: If you have git
-git clone <repository-url> /opt/nextcloud-install
+## Installation Commands
 
-# Option B: Download and extract
-wget <archive-url> -O nextcloud-install.tar.gz
-tar -xzf nextcloud-install.tar.gz
-mv nextcloud-install* /opt/nextcloud-install
+Run these commands **in order** on your server:
+
+### 1. System Setup
+```bash
+./01_system_prep.sh
+```
+**Time:** ~5 minutes  
+**Verifies:** All services running, PHP modules loaded
+
+### 2. Database Setup
+```bash
+./02_database_setup.sh
+```
+**Time:** ~2 minutes  
+**Creates:** Database credentials in `/root/*-credentials.txt`
+
+### 3. Nextcloud Installation
+```bash
+./03_nextcloud_install.sh
+```
+**Time:** ~3 minutes  
+**Creates:** Admin credentials in `/root/nextcloud-admin-credentials.txt`
+
+### 4. Nginx Configuration
+**Manual step** - Replace `YOURDOMAIN.COM` with your actual domain:
+
+```bash
+# Create nginx config
+cat > /etc/nginx/sites-available/YOURDOMAIN.COM << 'EOF'
+server {
+    listen 80;
+    server_name YOURDOMAIN.COM www.YOURDOMAIN.COM;
+    
+    root /var/www/nextcloud;
+    index index.php index.html;
+    
+    client_max_body_size 512M;
+    fastcgi_buffers 64 4K;
+    
+    location /.well-known/acme-challenge { }
+    
+    location / {
+        try_files $uri $uri/ /index.php$request_uri;
+    }
+    
+    location ~ ^\/(?:build|tests|config|lib|3rdparty|templates|data)\/ {
+        deny all;
+    }
+    
+    location ~ ^\/(?:\.|autotest|occ|issue|indie|db_|console) {
+        deny all;
+    }
+    
+    location ~ \.php$ {
+        fastcgi_split_path_info ^(.+\.php)(/.*)$;
+        try_files $fastcgi_script_name =404;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+        fastcgi_pass unix:/var/run/php/php8.3-fpm.sock;
+        fastcgi_index index.php;
+    }
+}
+EOF
+
+# Enable site
+ln -sf /etc/nginx/sites-available/YOURDOMAIN.COM /etc/nginx/sites-enabled/
+rm -f /etc/nginx/sites-enabled/default
+nginx -t && systemctl reload nginx
+
+# Update Nextcloud trusted domains
+cd /var/www/nextcloud
+sudo -u www-data php occ config:system:set trusted_domains 0 --value='YOURDOMAIN.COM'
+sudo -u www-data php occ config:system:set trusted_domains 1 --value='www.YOURDOMAIN.COM'
+sudo -u www-data php occ config:system:set overwrite.cli.url --value='https://YOURDOMAIN.COM/'
 ```
 
-### Make scripts executable
+### 5. SSL Setup
+**Replace with your actual email and domain:**
 ```bash
-cd /opt/nextcloud-install
-chmod +x src/*.sh
+./06_ssl_setup.sh your-email@domain.com yourdomain.com
+```
+**Time:** ~2 minutes  
+**Result:** HTTPS access enabled
+
+### 6. Test Access
+```bash
+# Get admin credentials
+cat /root/nextcloud-admin-credentials.txt
+
+# Test HTTPS access
+curl -I https://yourdomain.com/
 ```
 
-## Step 2: Run the Installation
+## Optional: OnlyOffice Integration
 
-### Start the master installation script
+### 7. Install OnlyOffice
 ```bash
-sudo ./src/00_master_install.sh
+./04_onlyoffice_install.sh
+```
+**Time:** ~5 minutes  
+**Result:** Document server running on port 8000
+
+### 8. Configure Integration
+```bash
+./07_integration_config.sh
+```
+**Time:** ~2 minutes  
+**Result:** OnlyOffice integrated with Nextcloud
+
+## Verification Checklist
+
+After installation, verify:
+
+- [ ] **HTTPS Access**: `https://yourdomain.com/` loads
+- [ ] **Admin Login**: Use credentials from `/root/nextcloud-admin-credentials.txt`
+- [ ] **SSL Certificate**: Valid and trusted
+- [ ] **File Upload**: Test uploading a file
+- [ ] **OnlyOffice** (if installed): Can edit documents
+
+## Common Issues
+
+### SSL Certificate Fails
+```bash
+# Check if domain resolves to your server
+dig +short yourdomain.com
+
+# Verify nginx is serving the domain
+curl -H "Host: yourdomain.com" http://localhost/
 ```
 
-### Follow the prompts
-The script will ask for:
-1. **Domain name** (e.g., `cloud.example.com`)
-2. **Email address** (for SSL certificates)
-3. **Confirmation** to proceed
+### Trusted Domain Error
+```bash
+cd /var/www/nextcloud
+sudo -u www-data php occ config:system:set trusted_domains 0 --value='yourdomain.com'
+```
 
-### Wait for completion
-The installation takes 15-30 minutes depending on your server speed and internet connection.
+### Service Not Running
+```bash
+# Check all services
+systemctl status nginx mariadb postgresql redis-server php8.3-fpm
 
-## Step 3: Access Your Installation
-
-### Login to Nextcloud
-1. Open your browser and go to `https://yourdomain.com/`
-2. Use the admin credentials from `/root/nextcloud-admin-credentials.txt`
-3. Complete the initial setup wizard
-
-### Test OnlyOffice Integration
-1. Navigate to the "OnlyOffice_Test" folder
-2. Click on "Test_Document.docx"
-3. The document should open in the OnlyOffice editor
-4. Make some changes and save to verify everything works
-
-## What Gets Installed
-
-### Services
-- **Nginx** - Web server and reverse proxy
-- **PHP 8.3-FPM** - PHP processor for Nextcloud
-- **MariaDB** - Database for Nextcloud
-- **PostgreSQL** - Database for OnlyOffice
-- **Redis** - Caching service
-- **OnlyOffice Document Server** - Document editing service
-
-### Security
-- **UFW Firewall** - Only allows HTTP, HTTPS, and SSH
-- **Fail2ban** - Protects against brute force attacks
-- **SSL/TLS** - Let's Encrypt certificates with auto-renewal
-- **Security Headers** - XSS protection, HSTS, etc.
-
-### URLs
-- **Nextcloud**: `https://yourdomain.com/`
-- **OnlyOffice**: `https://yourdomain.com/onlyoffice/`
-- **Admin Panel**: Login at `https://yourdomain.com/login`
+# Restart if needed
+systemctl restart service-name
+```
 
 ## Important Files
 
-After installation, these files contain crucial information:
+| File | Purpose |
+|------|---------|
+| `/root/nextcloud-admin-credentials.txt` | Nextcloud admin login |
+| `/root/nextcloud-db-credentials.txt` | Database credentials |
+| `/root/ssl-setup-summary.txt` | SSL certificate info |
+| `/var/log/nextcloud-install.log` | Installation logs |
 
-```bash
-# Admin credentials
-cat /root/nextcloud-admin-credentials.txt
+## Security Notes
 
-# Database credentials
-cat /root/nextcloud-db-credentials.txt
+After installation:
+1. **Change admin password** on first login
+2. **Review firewall**: `ufw status`
+3. **Check fail2ban**: `fail2ban-client status`
+4. **Update system**: `apt update && apt upgrade`
 
-# OnlyOffice JWT secret
-cat /root/onlyoffice-jwt-secret.txt
+## Support
 
-# Complete installation report
-cat /root/nextcloud-installation-report.txt
-```
+- **Logs**: Check `/var/log/nextcloud-install.log`
+- **Nginx errors**: `/var/log/nginx/error.log`
+- **PHP errors**: `/var/log/php8.3-fpm.log`
+- **Service status**: `systemctl status service-name`
 
-## Quick Health Check
-
-Run the diagnostic script to verify everything is working:
-
-```bash
-sudo ./src/99_diagnostics.sh
-```
-
-This will check:
-- ✅ All services are running
-- ✅ SSL certificates are valid
-- ✅ Integration is working
-- ✅ No recent errors
-
-## Common First Steps
-
-### 1. Create Additional Users
-```bash
-# Via command line
-sudo -u www-data php /var/www/nextcloud/occ user:add username
-
-# Or via web interface
-# Go to Settings → Users → Add User
-```
-
-### 2. Configure Email
-```bash
-# Set up SMTP for notifications
-sudo -u www-data php /var/www/nextcloud/occ config:app:set settings mail_domain --value="yourdomain.com"
-sudo -u www-data php /var/www/nextcloud/occ config:app:set settings mail_from_address --value="noreply"
-sudo -u www-data php /var/www/nextcloud/occ config:app:set settings mail_smtpmode --value="smtp"
-```
-
-### 3. Enable Additional Apps
-```bash
-# Enable useful apps
-sudo -u www-data php /var/www/nextcloud/occ app:enable calendar
-sudo -u www-data php /var/www/nextcloud/occ app:enable contacts
-sudo -u www-data php /var/www/nextcloud/occ app:enable tasks
-```
-
-### 4. Set Up Backups
-```bash
-# Create backup script
-cat > /root/backup-nextcloud.sh << 'EOF'
-#!/bin/bash
-DATE=$(date +%Y%m%d-%H%M%S)
-BACKUP_DIR="/root/backups"
-mkdir -p "$BACKUP_DIR"
-
-# Backup database
-mysqldump nextcloud > "$BACKUP_DIR/nextcloud-db-$DATE.sql"
-
-# Backup files (excluding data directory - too large)
-tar -czf "$BACKUP_DIR/nextcloud-config-$DATE.tar.gz" /var/www/nextcloud/config/
-
-echo "Backup completed: $BACKUP_DIR/nextcloud-*-$DATE.*"
-EOF
-
-chmod +x /root/backup-nextcloud.sh
-
-# Add to cron for daily backups
-echo "0 2 * * * /root/backup-nextcloud.sh" | crontab -
-```
-
-## Troubleshooting Quick Fixes
-
-### OnlyOffice Documents Won't Open
-```bash
-# Check OnlyOffice service
-sudo systemctl status onlyoffice-documentserver
-
-# Restart if needed
-sudo systemctl restart onlyoffice-documentserver
-
-# Check healthcheck
-curl http://127.0.0.1:8080/healthcheck
-```
-
-### SSL Certificate Issues
-```bash
-# Check certificate status
-sudo certbot certificates
-
-# Renew if needed
-sudo certbot renew
-
-# Test renewal
-sudo certbot renew --dry-run
-```
-
-### Performance Issues
-```bash
-# Check memory usage
-free -h
-
-# Check disk space
-df -h
-
-# Optimize database
-sudo -u www-data php /var/www/nextcloud/occ db:add-missing-indices
-sudo -u www-data php /var/www/nextcloud/occ db:convert-filecache-bigint
-```
-
-### Reset Admin Password
-```bash
-# Reset admin password
-sudo -u www-data php /var/www/nextcloud/occ user:resetpassword admin
-```
-
-## Next Steps
-
-### Security Hardening
-1. **Change default passwords** for all accounts
-2. **Enable two-factor authentication** for admin accounts
-3. **Review firewall rules** and close unnecessary ports
-4. **Set up monitoring** for system resources and logs
-
-### Customization
-1. **Configure themes** and branding
-2. **Install additional apps** from the Nextcloud app store
-3. **Set up external storage** if needed
-4. **Configure LDAP/AD integration** for enterprise environments
-
-### Maintenance
-1. **Set up automated backups** for data and databases
-2. **Configure log rotation** to prevent disk space issues
-3. **Plan for updates** - both Nextcloud and OnlyOffice
-4. **Monitor SSL certificate expiration** (auto-renewal should handle this)
-
-## Getting Help
-
-If you encounter issues:
-
-1. **Run diagnostics**: `sudo ./src/99_diagnostics.sh`
-2. **Check logs**: `tail -f /var/log/nextcloud-install.log`
-3. **Review the full documentation**: `docs/README.md`
-4. **Check service status**: `sudo systemctl status nginx php*-fpm mariadb postgresql redis-server onlyoffice-documentserver`
-
-## Success! 🎉
-
-You now have a fully functional Nextcloud + OnlyOffice installation with:
-- ✅ Secure HTTPS access
-- ✅ Document editing capabilities
-- ✅ Automated backups and maintenance
-- ✅ Production-ready security configuration
-
-Your installation is ready for production use!
+For detailed information, see [DEPLOYMENT.md](DEPLOYMENT.md).

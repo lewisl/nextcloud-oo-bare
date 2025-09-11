@@ -16,7 +16,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_FILE="/var/log/nextcloud-install.log"
 NEXTCLOUD_WEB_DIR="/var/www/nextcloud"
-ONLYOFFICE_PORT="8080"
+ONLYOFFICE_PORT="8000"
 
 # Colors for output
 RED='\033[0;31m'
