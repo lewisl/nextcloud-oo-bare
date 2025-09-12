@@ -395,13 +395,21 @@ EOF
 
 # Main execution
 main() {
-    local email="$1"
-    local domain="$2"
+    local email="${1:-}"
+    local domain="${2:-}"
 
-    if [[ -z "$email" ]] || [[ -z "$domain" ]]; then
-        echo "Usage: $0 <email_address> <domain_name>"
-        echo "Example: $0 admin@example.com cloud.example.com"
-        error "Both email address and domain name are required"
+    # Get domain from previous step if not provided
+    if [[ -z "$domain" ]]; then
+        domain=$(get_domain)
+    fi
+
+    # Get email if not provided
+    if [[ -z "$email" ]]; then
+        echo ""
+        read -p "Enter email address for SSL certificate: " email
+        if [[ -z "$email" ]]; then
+            error "Email address is required"
+        fi
     fi
 
     log "Starting SSL certificate setup..."
