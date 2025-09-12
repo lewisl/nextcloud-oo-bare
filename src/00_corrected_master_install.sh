@@ -134,8 +134,8 @@ main() {
     
     # Step 6: OnlyOffice installation
     run_script "04_onlyoffice_install.sh" "OnlyOffice Document Server Installation"
-    verify_step "OnlyOffice services running" "systemctl is-active --quiet ds-docservice"
-    verify_step "OnlyOffice responding" "curl -s http://localhost:8000/healthcheck | grep -q 'true'"
+    verify_step "OnlyOffice services running" "systemctl is-active --quiet onlyoffice-documentserver"
+    verify_step "OnlyOffice responding" "curl -s http://localhost:8080/healthcheck | grep -q 'true'"
     
     # Step 7: Update nginx for OnlyOffice proxy
     log "=== STEP: Update Nginx for OnlyOffice Proxy ==="
@@ -225,7 +225,7 @@ update_nginx_for_onlyoffice() {
     sed -i '/location ~ \.php\$ {/i\
     # OnlyOffice Document Server proxy\
     location /onlyoffice/ {\
-        proxy_pass http://127.0.0.1:8000/;\
+        proxy_pass http://127.0.0.1:8080/;\
         proxy_http_version 1.1;\
         proxy_set_header Upgrade $http_upgrade;\
         proxy_set_header Connection "upgrade";\
@@ -237,7 +237,7 @@ update_nginx_for_onlyoffice() {
     }\
     \
     location /onlyoffice/healthcheck {\
-        proxy_pass http://127.0.0.1:8000/healthcheck;\
+        proxy_pass http://127.0.0.1:8080/healthcheck;\
         proxy_http_version 1.1;\
         proxy_set_header Host $host;\
     }\

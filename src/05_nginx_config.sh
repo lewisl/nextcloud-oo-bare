@@ -16,7 +16,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_FILE="/var/log/nextcloud-install.log"
 NEXTCLOUD_WEB_DIR="/var/www/nextcloud"
-ONLYOFFICE_PORT="8000"
+ONLYOFFICE_PORT="8080"
 
 # Colors for output
 RED='\033[0;31m'
@@ -86,13 +86,14 @@ get_domain() {
         domain="test-collab-site.com"
     fi
     
-    # If still not found, ask user
+    # If still not found, use localhost as default for testing
     if [[ -z "$domain" ]]; then
         echo ""
-        read -p "Enter the domain name for your site (e.g., cloud.example.com): " domain
+        read -p "Enter the domain name for your site (or press Enter for localhost): " domain
         
         if [[ -z "$domain" ]]; then
-            error "Domain name is required"
+            domain="localhost"
+            info "Using localhost as domain (can be changed later)"
         fi
     fi
     
