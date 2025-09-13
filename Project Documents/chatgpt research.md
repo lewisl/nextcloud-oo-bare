@@ -270,11 +270,12 @@ Lewis' follow-up response
 Perfect — that’s the pragmatic choice 👍.
 If you want **one nginx** doing SSL and routing, the cleanest path is:
 
+## No snaps, no docker — just systemd-managed services you can point at 127.0.0.1.
+
 * **Nextcloud** from its official APT repo
 * **ONLYOFFICE Document Server** from its official APT repo
 * **nginx** from your distro’s package manager
 
-No snaps, no docker — just systemd-managed services you can point at 127.0.0.1.
 
 ---
 
@@ -287,6 +288,7 @@ sudo apt update
 sudo apt install software-properties-common
 sudo add-apt-repository ppa:nextcloud-devs/client
 # (for the server, use the official .deb repo instead of PPA if available)
+# this is NOT a good idea: use the official tarball from nextcloud!!
 sudo apt install nextcloud-server php-fpm mariadb-server
 ```
 
