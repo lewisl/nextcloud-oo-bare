@@ -1,55 +1,65 @@
+
 # Next Steps - Nextcloud + OnlyOffice Deployment
 
-**Date:** September 12, 2025  
-**Current Status:** System cleaned, ready for fresh installation  
-**Architecture:** ARM64 (aarch64) - This is KEY to the OnlyOffice issue
+**Date:** September 14, 2025  
+**Current Status:** Dual-domain installation completed but with critical issues  
+**Architecture:** ARM64 (aarch64) - Dual domain approach implemented
 
 ## Current Situation
 
 ✅ **What Works:**
-- Scripts 01-03 (system prep, database, Nextcloud) have worked previously
-- System is completely clean after running `99_uninstall.sh`
-- All components removed, ready for fresh start
+- Complete dual-domain installation scripts (01-07) created and executed
+- Nextcloud accessible at `https://docs.test-collab-site.com`
+- OnlyOffice accessible at `https://onlyoffice.test-collab-site.com`
+- SSL certificates working for both domains
+- Basic login functionality working
 
-❌ **Main Issue:**
-- OnlyOffice Document Server fails to install via standard APT repository on ARM64
-- GPG key issues: `NO_PUBKEY 8320CA65CB2DE8E5`
-- Standard OnlyOffice repo doesn't seem to have proper ARM64 packages
+❌ **Critical Issues:**
+- Admin user created via `occ` commands instead of web installer
+- Missing default files and sample content
+- Upload/add button not functional
+- Default apps (dashboard, notes) not properly initialized
+- Configuration corrupted by manual admin user creation
 
-🎯 **Key Insight:**
-- **Augment Code successfully deployed OnlyOffice on this EXACT same ARM64 server**
-- This proves it IS possible - we just need to find the right method
+🎯 **Root Cause:**
+- Used `occ` commands to create admin user instead of letting web installer handle it
+- This bypassed proper initialization of user data directory and skeleton files
+- Web installer is now blocked due to existing incomplete configuration
 
 ## Immediate Next Steps
 
-### 1. Research OnlyOffice ARM64 Installation Methods
-- [ ] Check if OnlyOffice has official ARM64 Docker images
-- [ ] Look for manual .deb package downloads for ARM64
-- [ ] Research building from source for ARM64
-- [ ] Check if there's a different repository for ARM64 packages
-- [ ] Look into snap/flatpak alternatives
+### 1. Fix Nextcloud Installation Issues
+- [ ] **Complete uninstall**: Remove all traces of current installation
+- [ ] **Modify scripts**: Update installation scripts to NOT create admin user via `occ`
+- [ ] **Let web installer run**: Allow Nextcloud web installer to create admin user properly
+- [ ] **Verify default files**: Ensure skeleton directory and sample files are created
+- [ ] **Test functionality**: Verify upload, apps, and all default features work
 
-### 2. Alternative Installation Approaches
-- [ ] **Docker Method**: OnlyOffice officially supports Docker - check ARM64 images
-- [ ] **Manual Download**: Direct .deb download from OnlyOffice releases
-- [ ] **Build from Source**: Last resort but most flexible
-- [ ] **Different Repository**: Check if there's an ARM64-specific repo
+### 2. Script Modifications Needed
+- [ ] **Remove admin user creation** from `03_nextcloud_install_dual_domain.sh`
+- [ ] **Add CAN_INSTALL file creation** to allow web installer
+- [ ] **Ensure proper permissions** for web installer to work
+- [ ] **Test web installer flow** end-to-end
 
-### 3. Quick Test Sequence
-Once we find the right OnlyOffice method:
+### 3. Recovery Sequence
 ```bash
-# 1. Run the working scripts
-./01_system_prep.sh    # ~5 minutes
-./02_database_setup.sh # ~2 minutes  
-./03_nextcloud_install.sh # ~3 minutes
+# 1. Complete cleanup
+./99_uninstall_dual_domain.sh
 
-# 2. Install OnlyOffice using discovered method
-# (Method TBD based on research)
+# 2. Run modified scripts (without admin user creation)
+./01_system_prep_dual_domain.sh
+./02_database_setup_dual_domain.sh
+./03_nextcloud_install_dual_domain.sh  # Modified to skip admin user
 
-# 3. Complete the deployment
-./05_nginx_config.sh   # Configure reverse proxy
-./06_ssl_setup.sh your-email@domain.com test-collab-site.com
-./07_integration_config.sh # Connect Nextcloud + OnlyOffice
+# 3. Access web installer
+# Go to https://docs.test-collab-site.com
+# Create admin user through web interface
+
+# 4. Complete OnlyOffice integration
+./04_onlyoffice_install_dual_domain.sh
+./05_nginx_config_dual_domain.sh
+./06_ssl_setup_dual_domain.sh your-email@domain.com
+./07_integration_config_dual_domain.sh
 ```
 
 ## Research Commands to Try

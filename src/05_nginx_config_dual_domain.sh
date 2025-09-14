@@ -63,6 +63,18 @@ load_config() {
     success "Configuration loaded"
 }
 
+# Get OnlyOffice port from nginx configuration
+get_onlyoffice_port() {
+    local nginx_conf="/etc/onlyoffice/documentserver/nginx/ds.conf"
+    if [[ -f "$nginx_conf" ]]; then
+        # Extract port from listen directive
+        local port=$(grep "listen" "$nginx_conf" | head -1 | sed -n "s/.*listen[[:space:]]*[^:]*:\([0-9]*\).*/\1/p")
+        echo "${port:-80}"
+    else
+        echo "80"  # default fallback
+    fi
+}
+
 # Display banner
 show_banner() {
     clear
@@ -342,7 +354,7 @@ server {
     
     # Proxy to OnlyOffice internal nginx
     location / {
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://127.0.0.1:$(get_onlyoffice_port);
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -369,13 +381,13 @@ server {
     
     # Health check
     location /healthcheck {
-        proxy_pass http://127.0.0.1:8080/healthcheck;
+        proxy_pass http://127.0.0.1:$(get_onlyoffice_port)/healthcheck;
         access_log off;
     }
     
     # Static files caching
     location ~* \.(css|js|png|jpg|jpeg|gif|ico|svg)\$ {
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://127.0.0.1:$(get_onlyoffice_port);
         proxy_set_header Host \$host;
         proxy_cache_valid 200 1d;
         expires 1d;
@@ -487,7 +499,7 @@ server {
     
     # Proxy to OnlyOffice internal nginx
     location / {
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://127.0.0.1:$(get_onlyoffice_port);
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -510,7 +522,7 @@ server {
     
     # Health check
     location /healthcheck {
-        proxy_pass http://127.0.0.1:8080/healthcheck;
+        proxy_pass http://127.0.0.1:$(get_onlyoffice_port)/healthcheck;
         access_log off;
     }
 }
