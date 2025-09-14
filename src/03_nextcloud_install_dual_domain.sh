@@ -182,33 +182,48 @@ EOF
     success "PHP configured for Nextcloud"
 }
 
-# Install Nextcloud
-install_nextcloud() {
-    header "Installing Nextcloud"
+# Prepare Nextcloud for web installer
+prepare_nextcloud_for_installer() {
+    header "Preparing Nextcloud for Web Installer"
     
-    log "Running Nextcloud installation..."
+    log "Creating CAN_INSTALL file to allow web installer..."
     
-    # Run Nextcloud installation
-    sudo -u www-data php /var/www/nextcloud/occ maintenance:install \
-        --database="mysql" \
-        --database-name="$NC_DB_NAME" \
-        --database-user="$NC_DB_USER" \
-        --database-pass="$NC_DB_PASSWORD" \
-        --database-host="localhost" \
-        --data-dir="/srv/nextcloud-data" \
-        --admin-user="admin" \
-        --admin-pass="$(openssl rand -base64 32)" \
-        --admin-email="$ADMIN_EMAIL" \
-        --no-interaction
+    # Create CAN_INSTALL file to allow web installer
+    touch /var/www/nextcloud/CAN_INSTALL
+    chown www-data:www-data /var/www/nextcloud/CAN_INSTALL
+    chmod 644 /var/www/nextcloud/CAN_INSTALL
     
-    success "Nextcloud installed"
+    # Create basic config directory structure
+    mkdir -p /var/www/nextcloud/config
+    chown -R www-data:www-data /var/www/nextcloud/config
+    chmod 755 /var/www/nextcloud/config
+    
+    success "Nextcloud prepared for web installer"
 }
 
-# Configure Nextcloud
+# Configure Nextcloud (after web installer)
 configure_nextcloud() {
     header "Configuring Nextcloud"
     
     log "Configuring Nextcloud settings..."
+    
+    # Wait for Nextcloud to be installed via web installer
+    log "Waiting for Nextcloud to be installed via web installer..."
+    log "Please complete the web installer at: http://$NEXTCLOUD_DOMAIN"
+    log "Use these database settings:"
+    log "  Database: $NC_DB_NAME"
+    log "  Username: $NC_DB_USER"
+    log "  Password: $NC_DB_PASSWORD"
+    log "  Host: localhost"
+    log "  Data folder: /srv/nextcloud-data"
+    echo ""
+    read -p "Press Enter after completing the web installer..."
+    
+    # Verify installation
+    if ! sudo -u www-data php /var/www/nextcloud/occ status >/dev/null 2>&1; then
+        error "Nextcloud installation not detected. Please complete the web installer first."
+        return 1
+    fi
     
     # Set trusted domains
     sudo -u www-data php /var/www/nextcloud/occ config:system:set trusted_domains 0 --value="$NEXTCLOUD_DOMAIN"
@@ -482,8 +497,13 @@ test_installation() {
 save_installation_info() {
     header "Saving Installation Information"
     
-    # Get admin password
-    local admin_password=$(sudo -u www-data php /var/www/nextcloud/occ user:list | grep admin | cut -d'"' -f4)
+    # Get admin password if available
+    local admin_password=""
+    if sudo -u www-data php /var/www/nextcloud/occ status >/dev/null 2>&1; then
+        admin_password=$(sudo -u www-data php /var/www/nextcloud/occ user:list | grep admin | cut -d'"' -f4 2>/dev/null || echo "Not available")
+    else
+        admin_password="Not available - complete web installer first"
+    fi
     
     cat > /root/nextcloud_installation_info.txt << EOF
 # Nextcloud Installation Information
@@ -491,8 +511,17 @@ save_installation_info() {
 
 ## Access Information
 URL: http://$NEXTCLOUD_DOMAIN (will be https:// after SSL setup)
-Admin User: admin
+Admin User: admin (created via web installer)
 Admin Password: $admin_password
+
+## Web Installer Instructions
+1. Go to: http://$NEXTCLOUD_DOMAIN
+2. Complete the web installer with these settings:
+   - Database: $NC_DB_NAME
+   - Username: $NC_DB_USER
+   - Password: $NC_DB_PASSWORD
+   - Host: localhost
+   - Data folder: /srv/nextcloud-data
 
 ## Directory Structure
 Nextcloud Root: /var/www/nextcloud
@@ -514,10 +543,11 @@ Nextcloud: /usr/local/bin/backup-nextcloud.sh
 Database: /usr/local/bin/backup-mariadb.sh
 
 ## Next Steps
-1. Run: ./04_onlyoffice_install_dual_domain.sh
-2. Run: ./05_nginx_config_dual_domain.sh
-3. Run: ./06_ssl_setup_dual_domain.sh
-4. Run: ./07_integration_config_dual_domain.sh
+1. Complete web installer at: http://$NEXTCLOUD_DOMAIN
+2. Run: ./04_onlyoffice_install_dual_domain.sh
+3. Run: ./05_nginx_config_dual_domain.sh
+4. Run: ./06_ssl_setup_dual_domain.sh
+5. Run: ./07_integration_config_dual_domain.sh
 EOF
     
     chmod 600 /root/nextcloud_installation_info.txt
@@ -587,9 +617,9 @@ main() {
     download_nextcloud
     create_data_directory
     configure_php
-    install_nextcloud
-    configure_nextcloud
+    prepare_nextcloud_for_installer
     create_nginx_config
+    configure_nextcloud
     install_onlyoffice_app
     setup_cron
     create_backup_script

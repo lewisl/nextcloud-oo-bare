@@ -155,12 +155,12 @@ setup_postgresql() {
     log "Creating OnlyOffice database and user..."
     
     sudo -u postgres psql -c "CREATE DATABASE onlyoffice;"
-    sudo -u postgres psql -c "CREATE USER onlyoffice WITH PASSWORD 'onlyoffice';"
+    sudo -u postgres psql -c "CREATE USER onlyoffice WITH PASSWORD 'onlyoffice_password';"
     sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE onlyoffice TO onlyoffice;"
     sudo -u postgres psql -c "ALTER USER onlyoffice CREATEDB;"
     
     # Test database connection
-    PGPASSWORD="onlyoffice" psql -h localhost -U "onlyoffice" -d "onlyoffice" -c "SELECT 1;" >/dev/null 2>&1
+    PGPASSWORD="onlyoffice_password" psql -h localhost -U "onlyoffice" -d "onlyoffice" -c "SELECT 1;" >/dev/null 2>&1
     
     success "PostgreSQL setup completed"
 }
