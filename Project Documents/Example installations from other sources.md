@@ -1,6 +1,10 @@
 # Example installations of NextCloud
 All of this is very complicated and the various sources here make many assumptions. It may or may not be possible to change what is done in any of these examples after the fact.
 
+# here is a new one but might not be detailed enough:
+
+https://thelinuxcode.com/onlyoffice-docs-nextcloud/
+
 # the "Perfect" installer script
 - no provision for integrating OnlyOffice
 

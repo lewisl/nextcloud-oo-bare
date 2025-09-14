@@ -2,7 +2,7 @@
 # Next Steps - Nextcloud + OnlyOffice Deployment
 
 **Date:** September 14, 2025  
-**Current Status:** Dual-domain installation completed with nginx configuration fixed  
+**Current Status:** Dual-domain installation completed with OnlyOffice integration issues identified  
 **Architecture:** ARM64 (aarch64) - Dual domain approach implemented
 
 ## Current Situation
@@ -15,10 +15,14 @@
 - Basic login functionality working
 - **Nginx configuration fixed** with proper Nextcloud template
 - **PostgreSQL database issues resolved** for OnlyOffice
+- **JWT secret configured** for OnlyOffice integration
+- **WebSocket support** configured in nginx
+- **OnlyOffice services running** (docservice, converter, metrics)
 
 ❌ **Remaining Issues:**
-- `/apps/dashboard/` returns 403 error (may be authentication-related)
-- Need to verify if this is expected behavior for unauthenticated access
+- **OnlyOffice discovery endpoint missing**: `/hosting/discovery` returns 404 Not Found
+- **Integration incomplete**: Nextcloud cannot discover OnlyOffice capabilities
+- **Document editing not functional**: No OnlyOffice document types available in Nextcloud
 
 🎯 **Recent Fixes Applied:**
 - Replaced nginx configuration with official Nextcloud template
@@ -27,6 +31,15 @@
 - Fixed Nextcloud HTTPS redirect settings
 
 ## Recent Major Fixes Applied
+
+### OnlyOffice Discovery Endpoint Investigation (September 14, 2025)
+- **Problem**: OnlyOffice integration failing with 404 errors on `/hosting/discovery`
+- **Root Cause**: Discovery endpoint does not exist in OnlyOffice Document Server
+- **Investigation Results**: 
+  - Searched `/var/www/onlyoffice/documentserver` for discovery-related files
+  - Searched `/etc/onlyoffice/documentserver/nginx` for hosting location blocks
+  - **No discovery endpoints found** in OnlyOffice installation
+- **Status**: OnlyOffice integration incomplete - missing discovery endpoint
 
 ### Nginx Configuration Fix (September 14, 2025)
 - **Problem**: `/apps/dashboard/` returning 403 Forbidden errors
@@ -48,20 +61,25 @@
 
 ## Immediate Next Steps
 
-### 1. Verify Nextcloud Apps Access
-- [ ] **Complete uninstall**: Remove all traces of current installation
-- [ ] **Modify scripts**: Update installation scripts to NOT create admin user via `occ`
-- [ ] **Let web installer run**: Allow Nextcloud web installer to create admin user properly
-- [ ] **Verify default files**: Ensure skeleton directory and sample files are created
-- [ ] **Test functionality**: Verify upload, apps, and all default features work
+### 1. Investigate WOPI Alternative for OnlyOffice Integration
+- [ ] **Research WOPI protocol**: Check if OnlyOffice supports WOPI instead of discovery endpoint
+- [ ] **Check OnlyOffice documentation**: Look for alternative integration methods
+- [ ] **Test direct API access**: Try accessing OnlyOffice APIs directly
+- [ ] **Verify version compatibility**: Check if this OnlyOffice version supports Nextcloud integration
 
-### 2. Script Modifications Needed
+### 2. Alternative Integration Approaches
+- [ ] **Manual configuration**: Try configuring OnlyOffice connector manually in Nextcloud
+- [ ] **Check connector settings**: Verify all OnlyOffice connector settings are correct
+- [ ] **Test document creation**: Try creating documents directly in OnlyOffice interface
+- [ ] **Research community solutions**: Look for ARM64-specific OnlyOffice integration guides
+
+### 3. Script Modifications Needed
 - [ ] **Remove admin user creation** from `03_nextcloud_install_dual_domain.sh`
 - [ ] **Add CAN_INSTALL file creation** to allow web installer
 - [ ] **Ensure proper permissions** for web installer to work
 - [ ] **Test web installer flow** end-to-end
 
-### 3. Recovery Sequence
+### 4. Recovery Sequence
 ```bash
 # 1. Complete cleanup
 ./99_uninstall_dual_domain.sh
