@@ -270,6 +270,9 @@ configure_php() {
         sed -i 's/pm.max_spare_servers = .*/pm.max_spare_servers = 35/' "$pool_conf"
     fi
     
+    # Enable APCu module
+    phpenmod apcu
+    
     # Restart PHP-FPM
     systemctl restart php8.3-fpm
     systemctl enable php8.3-fpm
@@ -393,6 +396,17 @@ configure_databases() {
     log "Configuring Redis..."
     systemctl start redis-server
     systemctl enable redis-server
+    
+    # Configure Redis for unix socket
+    log "Configuring Redis for unix socket..."
+    sed -i 's/# unixsocket \/run\/redis\/redis-server.sock/unixsocket \/run\/redis\/redis-server.sock/' /etc/redis/redis.conf
+    sed -i 's/# unixsocketperm 700/unixsocketperm 770/' /etc/redis/redis.conf
+    
+    # Add www-data to redis group
+    usermod -a -G redis www-data
+    
+    # Restart Redis to apply configuration
+    systemctl restart redis-server
     
     success "Databases configured"
 }

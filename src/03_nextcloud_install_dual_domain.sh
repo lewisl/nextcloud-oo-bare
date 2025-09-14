@@ -223,12 +223,18 @@ configure_nextcloud() {
     # Set overwrite webroot
     sudo -u www-data php /var/www/nextcloud/occ config:system:set overwritewebroot --value="/"
     
-    # Configure Redis caching
-    sudo -u www-data php /var/www/nextcloud/occ config:system:set memcache.local --value="\\OC\\Memcache\\APCu"
-    sudo -u www-data php /var/www/nextcloud/occ config:system:set memcache.distributed --value="\\OC\\Memcache\\Redis"
-    sudo -u www-data php /var/www/nextcloud/occ config:system:set memcache.locking --value="\\OC\\Memcache\\Redis"
-    sudo -u www-data php /var/www/nextcloud/occ config:system:set redis host --value="localhost"
-    sudo -u www-data php /var/www/nextcloud/occ config:system:set redis port --value="6379"
+    # Configure Redis caching (skip if APCu not available)
+    if php -m | grep -q apcu; then
+        log "Configuring APCu and Redis caching..."
+        sudo -u www-data php /var/www/nextcloud/occ config:system:set memcache.local --value="\\OC\\Memcache\\APCu" || warning "APCu configuration failed, continuing without local cache"
+    else
+        warning "APCu not available, skipping local cache configuration"
+    fi
+    
+    # Configure Redis for file locking (use unix socket)
+    sudo -u www-data php /var/www/nextcloud/occ config:system:set memcache.locking --value="\\OC\\Memcache\\Redis" || warning "Redis locking configuration failed"
+    sudo -u www-data php /var/www/nextcloud/occ config:system:set redis host --value="/var/run/redis/redis-server.sock" || warning "Redis host configuration failed"
+    sudo -u www-data php /var/www/nextcloud/occ config:system:set redis port --value="0" --type=integer || warning "Redis port configuration failed"
     
     # Enable local remote servers (for OnlyOffice integration)
     sudo -u www-data php /var/www/nextcloud/occ config:system:set allow_local_remote_servers --value="true" --type=boolean
