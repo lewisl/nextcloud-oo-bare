@@ -53,13 +53,33 @@ This document maintains the current best versions of all important configuration
 }
 ```
 
-**Status:** ✅ WORKING - service now binding to IPv4 (127.0.0.1:8000) and discovery endpoint accessible
+**Status:** ✅ PARTIALLY WORKING - service binding to IPv4 (127.0.0.1:8000) but OnlyOffice not reachable from NextCloud
+
+**Current Configuration (JWT Disabled for Testing):**
+```json
+{
+  "services": {
+    "CoAuthoring": {
+      "server": { "ip": "127.0.0.1", "port": 8000 }
+    }
+  },
+  "token": { "enable": false }
+}
+```
 
 **Issues resolved:**
 1. ✅ Service now binding to IPv4 (127.0.0.1:8000)
 2. ✅ Using correct 3 secret parameters (inbox, outbox, session)
 3. ✅ Proper IPv4 binding for nginx proxy working
 4. ✅ Discovery endpoint accessible via nginx proxy
+
+**Current issues:**
+1. ❌ NextCloud connection test still failing: "Error while downloading the document file to be converted"
+2. ❌ OnlyOffice not reachable at all (proves it's not about JWT)
+3. ✅ PDF viewer working
+4. ✅ Image viewer working  
+5. ✅ Markdown documents work and can be edited
+6. ✅ NextCloud apps functioning properly
 
 ### NextCloud OnlyOffice App Configuration
 
