@@ -37,7 +37,24 @@
 - Ask clarifying questions before making changes
 - If unsure about a change, ask user first
 
-### 6. Recovery Procedures
+### 6. Diagnosis vs. Fixing
+- **"Diagnose" means TEST and EXAMINE only - NO CHANGES**
+- Run tests and examine output to determine potential causes
+- Document the cause of problems and save in project for review
+- May include proposals for specific solutions
+- May document proposed fixes or changes
+- **"Diagnose" does NOT mean fix, change, or run commands that modify the system**
+- Only make changes after explicit permission to proceed with fixes
+
+### 7. Configuration Documentation
+- **Maintain current best versions** of all important configuration files
+- Save working configurations as part of project documentation
+- Update documentation immediately after fixing something
+- Store configurations in version control with clear commit messages
+- Never lose working configurations when making changes
+- Keep a "golden copy" of each working configuration
+
+### 8. Recovery Procedures
 - Always have a rollback plan
 - Know how to revert each type of change
 - Keep backups of critical configurations
