@@ -8,7 +8,7 @@ https://thelinuxcode.com/onlyoffice-docs-nextcloud/
 # the "Perfect" installer script
 - no provision for integrating OnlyOffice
 
-[the perfect installer script](https://git.zaks.web.za/thisiszeev/perfect-nextcloud-installer)
+[the perfect installer script]gnxserser
 
 # Bare Metal example
 
