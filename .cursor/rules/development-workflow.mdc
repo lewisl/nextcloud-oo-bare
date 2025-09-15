@@ -1,0 +1,48 @@
+---
+alwaysApply: true
+description: Critical development workflow rules to prevent regressions
+---
+
+# Critical Development Workflow Rules
+
+## 🚨 MANDATORY RULES - NEVER BREAK THESE
+
+### Version Control First
+- **ALWAYS commit working state before ANY changes**
+- Make small, incremental commits
+- Each commit should be a single logical change
+- Test before committing
+- Use descriptive commit messages
+
+### Change Management
+- **Make ONE change at a time**
+- Test immediately after each change
+- If change breaks anything, revert immediately
+- Don't try to "fix" with more changes
+- Ask permission before making changes to working systems
+
+### Configuration Safety
+- **Never override working configurations without understanding the full system**
+- Read existing configs first, don't assume
+- Document every change and why it's needed
+- Capture current state before making changes
+- Use configuration management tools when available
+
+### Diagnosis vs. Fixing
+- **"Diagnose" means TEST and EXAMINE only - NO CHANGES**
+- Run tests and examine output to determine potential causes
+- Document the cause of problems and save in project for review
+- May include proposals for specific solutions
+- **"Diagnose" does NOT mean fix, change, or run commands that modify the system**
+- Only make changes after explicit permission to proceed with fixes
+
+## 📋 CHECKLIST BEFORE ANY CHANGE
+- [ ] Current state is committed to git
+- [ ] I understand what the current system does
+- [ ] I have a clear rollback plan
+- [ ] I'm making only ONE change
+- [ ] I have permission to make this change
+- [ ] I know how to test the change
+- [ ] I know what could break
+
+**Remember: It's better to ask permission and be slow than to break a working system and be fast.**

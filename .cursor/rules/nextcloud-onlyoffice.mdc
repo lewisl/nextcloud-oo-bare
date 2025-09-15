@@ -1,0 +1,35 @@
+---
+globs: *.conf,*.json,*.php,*.md
+description: NextCloud + OnlyOffice integration specific rules
+---
+
+# NextCloud + OnlyOffice Integration Rules
+
+## Configuration Files
+- [DEVELOPMENT_RULES.md](mdc:DEVELOPMENT_RULES.md) - Critical development workflow
+- [docs/CURRENT_BEST_CONFIGURATIONS.md](mdc:docs/CURRENT_BEST_CONFIGURATIONS.md) - Current working configurations
+- [docs/Nextcloud_OnlyOffice_2domains_baseline.md](mdc:docs/Nextcloud_OnlyOffice_2domains_baseline.md) - Reference baseline
+- [docs/CURRENT_STATUS_SUMMARY.md](mdc:docs/CURRENT_STATUS_SUMMARY.md) - Current status
+
+## NextCloud + OnlyOffice Specific Rules
+- Never change JWT secrets without understanding the full auth flow
+- Always check both NextCloud and OnlyOffice configurations
+- Verify port configurations match nginx setup
+- Test document editing functionality after any changes
+- Check both internal and external URLs
+
+## Current Working State
+- NextCloud PDF viewer, image viewer, markdown editor: ✅ WORKING
+- OnlyOffice service: ✅ Running on IPv4 (127.0.0.1:8000)
+- OnlyOffice reachability from NextCloud: ❌ NOT WORKING
+- JWT: Currently disabled for testing
+
+## Key Configuration Files
+- OnlyOffice: `/etc/onlyoffice/documentserver/local.json`
+- NextCloud nginx: `/etc/nginx/sites-available/docs.test-collab-site.com`
+- NextCloud config: `/var/www/nextcloud/config/config.php`
+
+## IPv4 Only
+- We are NOT using IPv6
+- All services must bind to 127.0.0.1 (IPv4)
+- Nginx proxies from 127.0.0.1:8080 to 127.0.0.1:8000

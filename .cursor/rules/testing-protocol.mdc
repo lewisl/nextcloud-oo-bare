@@ -1,0 +1,49 @@
+---
+globs: *.sh,*.py,*.php
+description: Testing protocol and diagnostic procedures
+---
+
+# Testing Protocol and Diagnostics
+
+## Testing Protocol
+- Test end-to-end functionality after each change
+- Verify all related services still work
+- Check logs for errors after changes
+- Test both internal and external access
+- Validate user experience, not just technical functionality
+
+## Diagnostic Commands
+```bash
+# OnlyOffice service health
+curl -sS http://127.0.0.1:8000/healthcheck
+curl -sS http://127.0.0.1:8080/healthcheck
+
+# NextCloud OnlyOffice connection test
+sudo -u www-data php /var/www/nextcloud/occ onlyoffice:documentserver --check
+
+# Service status
+sudo systemctl status ds-docservice
+sudo systemctl status nginx
+
+# Port binding check
+ss -ltnp 'sport = :8000'
+ss -ltnp 'sport = :8080'
+```
+
+## Log Monitoring
+```bash
+# OnlyOffice logs
+sudo tail -n 100 /var/log/onlyoffice/documentserver/docservice/out.log
+sudo tail -n 100 /var/log/onlyoffice/documentserver/converter/out.log
+
+# Nginx logs
+sudo tail -n 100 /var/log/nginx/error.log
+
+# NextCloud logs
+sudo -u www-data php /var/www/nextcloud/occ log:tail --lines=100
+```
+
+## Time Limits
+- Always put time limits on commands that try to reach endpoints on the server
+- Use `timeout` command for long-running operations
+- Set reasonable timeouts for curl commands

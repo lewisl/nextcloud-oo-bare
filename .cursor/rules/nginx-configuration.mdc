@@ -1,0 +1,33 @@
+---
+globs: *.conf,*.nginx
+description: Nginx configuration rules and best practices
+---
+
+# Nginx Configuration Rules
+
+## Critical Nginx Rules
+- Never modify nginx configs without understanding the full routing
+- Test all proxy configurations
+- Verify SSL/TLS settings
+- Check WebSocket support for OnlyOffice
+- Validate all location blocks
+
+## Current Nginx Setup
+- NextCloud: `docs.test-collab-site.com` (port 443)
+- OnlyOffice: `onlyoffice.test-collab-site.com` (port 443)
+- Internal proxy: 127.0.0.1:8080 → 127.0.0.1:8000
+
+## Key Configuration Files
+- [docs.test-collab-site.com](mdc:/etc/nginx/sites-available/docs.test-collab-site.com) - NextCloud nginx config
+- OnlyOffice nginx: `/etc/onlyoffice/documentserver/nginx/ds.conf`
+
+## Testing Commands
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+curl -sS http://127.0.0.1:8000/healthcheck  # Direct OnlyOffice
+curl -sS http://127.0.0.1:8080/healthcheck  # Via nginx proxy
+```
+
+## WebSocket Support Required
+- OnlyOffice requires WebSocket support for real-time editing
+- Ensure `proxy_http_version 1.1` and `Connection $connection_upgrade`

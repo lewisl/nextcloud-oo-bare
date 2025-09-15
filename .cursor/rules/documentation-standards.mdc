@@ -1,0 +1,36 @@
+---
+globs: *.md
+description: Documentation standards and requirements
+---
+
+# Documentation Standards
+
+## Required Documentation
+- [DEVELOPMENT_RULES.md](mdc:DEVELOPMENT_RULES.md) - Development workflow rules
+- [docs/CURRENT_BEST_CONFIGURATIONS.md](mdc:docs/CURRENT_BEST_CONFIGURATIONS.md) - Current working configurations
+- [docs/CURRENT_STATUS_SUMMARY.md](mdc:docs/CURRENT_STATUS_SUMMARY.md) - Current status summary
+- [docs/Nextcloud_OnlyOffice_2domains_baseline.md](mdc:docs/Nextcloud_OnlyOffice_2domains_baseline.md) - Reference baseline
+
+## Documentation Rules
+- **Maintain current best versions** of all important configuration files
+- Save working configurations as part of project documentation
+- Update documentation immediately after fixing something
+- Store configurations in version control with clear commit messages
+- Never lose working configurations when making changes
+- Keep a "golden copy" of each working configuration
+
+## Status Documentation
+Always document:
+- What's working vs. what's not working
+- Current configuration state
+- Key findings and insights
+- Next steps for troubleshooting
+- Regression protection status
+
+## Configuration Documentation
+Include:
+- Full configuration files
+- Status (working/not working)
+- Issues resolved
+- Current issues
+- Test results
