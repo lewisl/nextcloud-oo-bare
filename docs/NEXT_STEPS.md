@@ -254,6 +254,12 @@ From previous attempts documented in `Failed attempt at manual install of NextCl
      ```
    - **Script to Modify**: `06_ssl_setup_dual_domain.sh` - add after SSL certificate installation
 
+9. **errors in 01_system_prep_dual_domain.sh**
+- sed: -e expression #1, char 67: unknown option to `s' during Generating Secrets
+- this is minor: Restarting services...
+ systemctl restart ds-example.service
+Failed to restart ds-example.service: Unit ds-example.service not found.
+
 ## User Experience Completion Checklist
 
 ### Before Declaring Setup Complete, Verify:

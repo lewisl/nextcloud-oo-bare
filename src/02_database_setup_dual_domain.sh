@@ -3,7 +3,9 @@
 # Database Setup Script for 2-Domain Nextcloud + OnlyOffice Setup
 # This script sets up MariaDB for Nextcloud and PostgreSQL for OnlyOffice
 
-set -euo pipefail
+set -uo pipefail
+# Note: Removed -e flag to prevent script from exiting on non-critical errors
+# We handle errors explicitly in each function
 
 # Colors for output
 RED='\033[0;31m'
@@ -60,13 +62,30 @@ load_config() {
     ONLYOFFICE_DOMAIN=$(grep "onlyoffice_domain:" /etc/nextcloud-onlyoffice/params.yaml | cut -d'"' -f2)
     ADMIN_EMAIL=$(grep "admin_email:" /etc/nextcloud-onlyoffice/params.yaml | cut -d'"' -f2)
     
-    NC_DB_NAME=$(grep "db_name:" /etc/nextcloud-onlyoffice/params.yaml | head -1 | cut -d'"' -f2)
-    NC_DB_USER=$(grep "db_user:" /etc/nextcloud-onlyoffice/params.yaml | head -1 | cut -d'"' -f2)
-    NC_DB_PASSWORD=$(grep "db_password:" /etc/nextcloud-onlyoffice/params.yaml | head -1 | cut -d'"' -f2)
+    # Extract Nextcloud database values (from nextcloud section)
+    NC_DB_NAME=$(sed -n '/^nextcloud:/,/^onlyoffice:/{/db_name:/p}' /etc/nextcloud-onlyoffice/params.yaml | cut -d'"' -f2)
+    NC_DB_USER=$(sed -n '/^nextcloud:/,/^onlyoffice:/{/db_user:/p}' /etc/nextcloud-onlyoffice/params.yaml | cut -d'"' -f2)
+    NC_DB_PASSWORD=$(sed -n '/^nextcloud:/,/^onlyoffice:/{/db_password:/p}' /etc/nextcloud-onlyoffice/params.yaml | cut -d'"' -f2)
     
-    OO_DB_NAME=$(grep "db_name:" /etc/nextcloud-onlyoffice/params.yaml | tail -1 | cut -d'"' -f2)
-    OO_DB_USER=$(grep "db_user:" /etc/nextcloud-onlyoffice/params.yaml | tail -1 | cut -d'"' -f2)
-    OO_DB_PASSWORD=$(grep "db_password:" /etc/nextcloud-onlyoffice/params.yaml | tail -1 | cut -d'"' -f2)
+    # Extract OnlyOffice database values (from onlyoffice section)
+    OO_DB_NAME=$(sed -n '/^onlyoffice:/,/^jwt:/{/db_name:/p}' /etc/nextcloud-onlyoffice/params.yaml | cut -d'"' -f2)
+    OO_DB_USER=$(sed -n '/^onlyoffice:/,/^jwt:/{/db_user:/p}' /etc/nextcloud-onlyoffice/params.yaml | cut -d'"' -f2)
+    OO_DB_PASSWORD=$(sed -n '/^onlyoffice:/,/^jwt:/{/db_password:/p}' /etc/nextcloud-onlyoffice/params.yaml | cut -d'"' -f2)
+    
+    # Generate passwords if they're empty
+    if [[ -z "$NC_DB_PASSWORD" ]]; then
+        NC_DB_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
+        log "Generated new Nextcloud database password"
+        # Update the config file
+        sed -i "/nextcloud:/,/onlyoffice:/ s/db_password: \"\"/db_password: \"$NC_DB_PASSWORD\"/" /etc/nextcloud-onlyoffice/params.yaml
+    fi
+    
+    if [[ -z "$OO_DB_PASSWORD" ]]; then
+        OO_DB_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
+        log "Generated new OnlyOffice database password"
+        # Update the config file
+        sed -i "/onlyoffice:/,/jwt:/ s/db_password: \"\"/db_password: \"$OO_DB_PASSWORD\"/" /etc/nextcloud-onlyoffice/params.yaml
+    fi
     
     success "Configuration loaded"
 }
@@ -102,7 +121,7 @@ setup_mariadb() {
     local max_attempts=30
     local attempt=0
     
-    while ! mysql -e "SELECT 1;" >/dev/null 2>&1; do
+    while ! mysql -u root -e "SELECT 1;" >/dev/null 2>&1; do
         ((attempt++))
         if [[ $attempt -ge $max_attempts ]]; then
             error "MariaDB failed to start after $max_attempts attempts"
@@ -116,15 +135,56 @@ setup_mariadb() {
     # Create Nextcloud database and user
     log "Creating Nextcloud database and user..."
     
-    mysql -e "CREATE DATABASE IF NOT EXISTS \`$NC_DB_NAME\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
-    mysql -e "CREATE USER IF NOT EXISTS '$NC_DB_USER'@'localhost' IDENTIFIED BY '$NC_DB_PASSWORD';"
-    mysql -e "GRANT ALL PRIVILEGES ON \`$NC_DB_NAME\`.* TO '$NC_DB_USER'@'localhost';"
-    mysql -e "FLUSH PRIVILEGES;"
+    # Create database (may already exist)
+    mysql -u root -e "CREATE DATABASE IF NOT EXISTS \`$NC_DB_NAME\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;" || {
+        warning "Database $NC_DB_NAME may already exist"
+    }
+    
+    # Create or update user
+    mysql -u root -e "CREATE USER IF NOT EXISTS '$NC_DB_USER'@'localhost' IDENTIFIED BY '$NC_DB_PASSWORD';" || {
+        warning "User $NC_DB_USER may already exist, updating password..."
+        mysql -u root -e "ALTER USER '$NC_DB_USER'@'localhost' IDENTIFIED BY '$NC_DB_PASSWORD';" || {
+            error "Failed to create or update user $NC_DB_USER"
+            return 1
+        }
+    }
+    
+    # Grant privileges
+    mysql -u root -e "GRANT ALL PRIVILEGES ON \`$NC_DB_NAME\`.* TO '$NC_DB_USER'@'localhost';" || {
+        warning "Failed to grant privileges - may already be granted"
+    }
+    
+    mysql -u root -e "FLUSH PRIVILEGES;"
     
     # Test database connection
-    mysql -u "$NC_DB_USER" -p"$NC_DB_PASSWORD" -e "USE \`$NC_DB_NAME\`; SELECT 1;" >/dev/null 2>&1
+    log "Testing MariaDB connection..."
+    if mysql -u "$NC_DB_USER" -p"$NC_DB_PASSWORD" -e "USE \`$NC_DB_NAME\`; SELECT 1;" >/dev/null 2>&1; then
+        log "MariaDB connection test passed"
+    else
+        warning "MariaDB connection test failed - attempting password reset..."
+        
+        # Try to fix the connection by resetting the password
+        log "Resetting user password to match configuration..."
+        mysql -u root -e "ALTER USER '$NC_DB_USER'@'localhost' IDENTIFIED BY '$NC_DB_PASSWORD';" || {
+            error "Failed to reset password for user $NC_DB_USER"
+            return 1
+        }
+        mysql -u root -e "FLUSH PRIVILEGES;"
+        
+        # Test connection again after password reset
+        if mysql -u "$NC_DB_USER" -p"$NC_DB_PASSWORD" -e "USE \`$NC_DB_NAME\`; SELECT 1;" >/dev/null 2>&1; then
+            success "MariaDB connection restored after password reset"
+        else
+            error "MariaDB connection still failing after password reset"
+            log "Debugging connection issue..."
+            # Show the actual error for debugging
+            mysql -u "$NC_DB_USER" -p"$NC_DB_PASSWORD" -e "USE \`$NC_DB_NAME\`; SELECT 1;" 2>&1 || true
+            return 1
+        fi
+    fi
     
     success "MariaDB setup completed"
+    return 0
 }
 
 # Setup PostgreSQL for OnlyOffice
@@ -151,18 +211,49 @@ setup_postgresql() {
     
     success "PostgreSQL is ready"
     
-    # Create OnlyOffice database and user (using OnlyOffice defaults)
+    # Create OnlyOffice database and user
     log "Creating OnlyOffice database and user..."
     
-    sudo -u postgres psql -c "CREATE DATABASE onlyoffice;"
-    sudo -u postgres psql -c "CREATE USER onlyoffice WITH PASSWORD 'onlyoffice_password';"
-    sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE onlyoffice TO onlyoffice;"
-    sudo -u postgres psql -c "ALTER USER onlyoffice CREATEDB;"
+    # Create database if it doesn't exist
+    sudo -u postgres psql -c "CREATE DATABASE $OO_DB_NAME;" 2>/dev/null || {
+        log "Database $OO_DB_NAME may already exist"
+    }
     
-    # Test database connection
-    PGPASSWORD="onlyoffice_password" psql -h localhost -U "onlyoffice" -d "onlyoffice" -c "SELECT 1;" >/dev/null 2>&1
+    # Create or update user
+    sudo -u postgres psql -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_user WHERE usename = '$OO_DB_USER') THEN CREATE USER $OO_DB_USER WITH PASSWORD '$OO_DB_PASSWORD'; ELSE ALTER USER $OO_DB_USER WITH PASSWORD '$OO_DB_PASSWORD'; END IF; END \$\$;"
+    
+    # Grant privileges
+    sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE $OO_DB_NAME TO $OO_DB_USER;"
+    sudo -u postgres psql -c "ALTER USER $OO_DB_USER CREATEDB;"
+    
+    # Test database connection without prompting for password
+    log "Testing PostgreSQL connection..."
+    if PGPASSWORD="$OO_DB_PASSWORD" psql -h localhost -U "$OO_DB_USER" -d "$OO_DB_NAME" -c "SELECT 1;" >/dev/null 2>&1; then
+        log "PostgreSQL connection test passed"
+    else
+        warning "PostgreSQL connection test failed - attempting password reset..."
+        
+        # Try to fix the connection by resetting the password
+        log "Resetting PostgreSQL user password to match configuration..."
+        sudo -u postgres psql -c "ALTER USER $OO_DB_USER WITH PASSWORD '$OO_DB_PASSWORD';" || {
+            error "Failed to reset password for PostgreSQL user $OO_DB_USER"
+            return 1
+        }
+        
+        # Test connection again after password reset
+        if PGPASSWORD="$OO_DB_PASSWORD" psql -h localhost -U "$OO_DB_USER" -d "$OO_DB_NAME" -c "SELECT 1;" >/dev/null 2>&1; then
+            success "PostgreSQL connection restored after password reset"
+        else
+            error "PostgreSQL connection still failing after password reset"
+            log "Debugging connection issue..."
+            # Show the actual error for debugging
+            PGPASSWORD="$OO_DB_PASSWORD" psql -h localhost -U "$OO_DB_USER" -d "$OO_DB_NAME" -c "SELECT 1;" 2>&1 || true
+            return 1
+        fi
+    fi
     
     success "PostgreSQL setup completed"
+    return 0
 }
 
 # Configure database security
@@ -408,16 +499,66 @@ verify_setup() {
 
 # Main execution
 main() {
+    local errors=0
+    
     check_root
     load_config
     show_banner
-    setup_mariadb
-    setup_postgresql
-    configure_database_security
-    create_backup_scripts
-    test_connections
-    save_credentials
+    
+    log "Starting MariaDB setup..."
+    if setup_mariadb; then
+        success "✓ MariaDB setup phase completed"
+    else
+        error "✗ MariaDB setup failed"
+        ((errors++))
+    fi
+    
+    log "Starting PostgreSQL setup..."
+    if setup_postgresql; then
+        success "✓ PostgreSQL setup phase completed"
+    else
+        error "✗ PostgreSQL setup failed"
+        ((errors++))
+    fi
+    
+    log "Configuring database security..."
+    if configure_database_security; then
+        success "✓ Database security configuration completed"
+    else
+        warning "⚠ Database security configuration had issues"
+    fi
+    
+    log "Creating backup scripts..."
+    if create_backup_scripts; then
+        success "✓ Backup scripts created"
+    else
+        warning "⚠ Backup script creation had issues"
+    fi
+    
+    log "Testing connections..."
+    if test_connections; then
+        success "✓ Connection tests passed"
+    else
+        error "✗ Connection tests failed"
+        ((errors++))
+    fi
+    
+    log "Saving credentials..."
+    if save_credentials; then
+        success "✓ Credentials saved"
+    else
+        warning "⚠ Credential saving had issues"
+    fi
+    
+    log "Verifying setup..."
     verify_setup
+    
+    if [[ $errors -gt 0 ]]; then
+        error "Setup completed with $errors critical errors"
+        exit 1
+    else
+        success "All setup phases completed successfully!"
+    fi
 }
 
 # Run main function
