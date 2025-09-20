@@ -1,0 +1,18 @@
+deployment:
+  base_domain: "test-collab-site.com"
+  nextcloud_domain: "docs.test-collab-site.com"
+  onlyoffice_domain: "onlyoffice.test-collab-site.com"
+  admin_email: "lewis@neilson-levin.org"
+
+nextcloud:
+  db_name: "nextcloud"
+  db_user: "ncuser"
+  db_password: "PqPRuYIudTTn2WlnKpIrckEWk"
+
+onlyoffice:
+  db_name: "onlyoffice"
+  db_user: "oouser"
+  db_password: "zVeMb1KGUxw56aX9hBxOKD7G2"
+
+jwt:
+  secret: ""
