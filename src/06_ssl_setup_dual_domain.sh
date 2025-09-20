@@ -87,7 +87,7 @@ load_config() {
 
 # Display banner
 show_banner() {
-    clear
+    # clear  # Commented out to avoid terminal issues
     echo -e "${CYAN}${BOLD}"
     cat << 'EOF'
 ╔══════════════════════════════════════════════════════════════════════════════╗
