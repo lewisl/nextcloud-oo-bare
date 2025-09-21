@@ -343,7 +343,7 @@ sudo -u www-data php /var/www/nextcloud/occ onlyoffice:documentserver --check
 
 ---
 
-## 13) Agent notes (Augment/Cursor)
+## 13) Agent notes (Augment or Cursor)
 
 * Treat `/etc/nextcloud-onlyoffice/params.yaml` as the **authoritative parameters source**.
 * When scripts **create** secrets (DB passwords / JWT), they **must update** this file.
