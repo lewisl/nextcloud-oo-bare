@@ -1,1 +1,0 @@
-[OnlyOffice to NextCloud integration](https://guides.onlyoffice.com/integration/gettingstarted-nextcloud.aspx)
