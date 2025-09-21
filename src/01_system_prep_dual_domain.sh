@@ -381,11 +381,11 @@ configure_databases() {
     systemctl enable mariadb
     
     # Secure MariaDB installation
-    mysql -e "DELETE FROM mysql.user WHERE User='';"
-    mysql -e "DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');"
-    mysql -e "DROP DATABASE IF EXISTS test;"
-    mysql -e "DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';"
-    mysql -e "FLUSH PRIVILEGES;"
+    mysql -u root -e "DELETE FROM mysql.user WHERE User='';"
+    mysql -u root -e "DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');"
+    mysql -u root -e "DROP DATABASE IF EXISTS test;"
+    mysql -u root -e "DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';"
+    mysql -u root -e "FLUSH PRIVILEGES;"
     
     # Configure PostgreSQL
     log "Configuring PostgreSQL..."
@@ -422,9 +422,15 @@ generate_secrets() {
     local oo_db_password=$(openssl rand -base64 32)
     local jwt_secret=$(openssl rand -base64 64)
     
-    # Update configuration file
-    sed -i "s/db_password: \"\"/db_password: \"$nc_db_password\"/" /etc/nextcloud-onlyoffice/params.yaml
-    sed -i "s/onlyoffice:/onlyoffice:\n  db_password: \"$oo_db_password\"/" /etc/nextcloud-onlyoffice/params.yaml
+    # Update configuration file with proper YAML structure
+    # Update Nextcloud password (first occurrence)
+    sed -i "0,/db_password: \"\"/s//db_password: \"$nc_db_password\"/" /etc/nextcloud-onlyoffice/params.yaml
+    
+    # Update OnlyOffice password (second occurrence) 
+    # Use a more specific pattern to target the right section
+    sed -i "/^onlyoffice:/,/^jwt:/ s/db_password: \"\"/db_password: \"$oo_db_password\"/" /etc/nextcloud-onlyoffice/params.yaml
+    
+    # Update JWT secret
     sed -i "s/secret: \"\"/secret: \"$jwt_secret\"/" /etc/nextcloud-onlyoffice/params.yaml
     
     success "Secrets generated and saved"

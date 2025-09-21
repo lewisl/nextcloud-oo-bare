@@ -77,7 +77,7 @@ get_onlyoffice_port() {
 
 # Display banner
 show_banner() {
-    clear
+    # clear  # Commented out to avoid terminal issues
     echo -e "${CYAN}${BOLD}"
     cat << 'EOF'
 ╔══════════════════════════════════════════════════════════════════════════════╗
@@ -240,6 +240,11 @@ server {
     # PHP handling
     location ~ ^/(?:build|tests|config|lib|3rdparty|templates|data)(?:\$|/) {
         deny all;
+    }
+    
+    # Route apps through Nextcloud index.php (priority prefix match)
+    location ^~ /apps/ {
+        try_files \$uri \$uri/ /index.php\$request_uri;
     }
     
     location ~ ^/(?:\.|autotest|occ|issue|indie|db_|sqlite) {
@@ -429,6 +434,11 @@ server {
     # PHP handling
     location ~ ^/(?:build|tests|config|lib|3rdparty|templates|data)(?:\$|/) {
         deny all;
+    }
+    
+    # Route apps through Nextcloud index.php (priority prefix match)
+    location ^~ /apps/ {
+        try_files \$uri \$uri/ /index.php\$request_uri;
     }
     
     location ~ ^/(?:\.|autotest|occ|issue|indie|db_|sqlite) {

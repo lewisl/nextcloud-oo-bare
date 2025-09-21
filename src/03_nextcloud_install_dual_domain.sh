@@ -69,7 +69,7 @@ load_config() {
 
 # Display banner
 show_banner() {
-    clear
+    # clear  # Commented out to avoid terminal issues
     echo -e "${CYAN}${BOLD}"
     cat << 'EOF'
 ╔══════════════════════════════════════════════════════════════════════════════╗
@@ -267,6 +267,13 @@ configure_nextcloud() {
 # Create nginx configuration for Nextcloud
 create_nginx_config() {
     header "Creating Nginx Configuration for Nextcloud"
+    
+    # Check if SSL configuration already exists (from 05_nginx_config script)
+    if grep -q "listen 443 ssl" "/etc/nginx/sites-available/$NEXTCLOUD_DOMAIN" 2>/dev/null; then
+        success "SSL nginx configuration already exists, skipping creation"
+        log "Nginx SSL configuration found - not overwriting existing configuration"
+        return 0
+    fi
     
     log "Creating nginx configuration for $NEXTCLOUD_DOMAIN..."
     

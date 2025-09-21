@@ -163,44 +163,73 @@ remove_packages() {
 remove_directories() {
     header "Removing Directories and Files"
     
+    # Helper function to forcefully remove directory
+    force_remove_dir() {
+        local dir="$1"
+        if [[ -d "$dir" ]]; then
+            log "Removing $dir..."
+            # First try normal removal
+            if ! rm -rf "$dir" 2>/dev/null; then
+                # If that fails, try to unmount if it's a mount point
+                if mountpoint -q "$dir" 2>/dev/null; then
+                    warning "$dir is a mount point, unmounting..."
+                    umount -f "$dir" 2>/dev/null || true
+                fi
+                # Try again with more force
+                rm -rf "$dir" 2>/dev/null || {
+                    # Last resort: remove contents then directory
+                    find "$dir" -type f -delete 2>/dev/null || true
+                    find "$dir" -type l -delete 2>/dev/null || true
+                    find "$dir" -type d -empty -delete 2>/dev/null || true
+                    rmdir "$dir" 2>/dev/null || warning "Could not fully remove $dir"
+                }
+            fi
+        fi
+    }
+    
     # Nextcloud directories
     log "Removing Nextcloud directories..."
-    rm -rf /var/www/nextcloud || true
-    rm -rf /srv/nextcloud-data || true
-    rm -rf /var/www/html || true
+    force_remove_dir "/var/www/nextcloud"
+    force_remove_dir "/srv/nextcloud-data"
+    force_remove_dir "/var/www/html"
     
     # OnlyOffice directories
     log "Removing OnlyOffice directories..."
-    rm -rf /etc/onlyoffice || true
-    rm -rf /var/lib/onlyoffice || true
-    rm -rf /var/log/onlyoffice || true
-    rm -rf /usr/bin/onlyoffice || true
+    force_remove_dir "/etc/onlyoffice"
+    force_remove_dir "/var/lib/onlyoffice"
+    force_remove_dir "/var/log/onlyoffice"
+    force_remove_dir "/usr/bin/onlyoffice"
     
     # Configuration directories
     log "Removing configuration directories..."
-    rm -rf /etc/nginx || true
-    rm -rf /etc/php || true
-    rm -rf /etc/mysql || true
-    rm -rf /etc/postgresql || true
-    rm -rf /etc/redis || true
-    rm -rf /etc/fail2ban || true
+    force_remove_dir "/etc/nextcloud-onlyoffice"
+    force_remove_dir "/etc/nginx"
+    force_remove_dir "/etc/php"
+    force_remove_dir "/etc/mysql"
+    force_remove_dir "/etc/postgresql"
+    force_remove_dir "/etc/redis"
+    force_remove_dir "/etc/fail2ban"
     
     # Data directories
     log "Removing data directories..."
-    rm -rf /var/lib/mysql || true
-    rm -rf /var/lib/postgresql || true
-    rm -rf /var/lib/redis || true
-    rm -rf /var/lib/nginx || true
+    force_remove_dir "/var/lib/mysql"
+    force_remove_dir "/var/lib/postgresql"
+    force_remove_dir "/var/lib/redis"
+    force_remove_dir "/var/lib/nginx"
     
     # Log directories
     log "Removing log directories..."
-    rm -rf /var/log/nginx || true
-    rm -rf /var/log/php* || true
-    rm -rf /var/log/mysql || true
-    rm -rf /var/log/postgresql || true
-    rm -rf /var/log/redis || true
-    rm -rf /var/log/fail2ban || true
-    rm -rf /var/log/nextcloud* || true
+    force_remove_dir "/var/log/nginx"
+    for phplog in /var/log/php*; do
+        force_remove_dir "$phplog"
+    done
+    force_remove_dir "/var/log/mysql"
+    force_remove_dir "/var/log/postgresql"
+    force_remove_dir "/var/log/redis"
+    force_remove_dir "/var/log/fail2ban"
+    for nclog in /var/log/nextcloud*; do
+        force_remove_dir "$nclog"
+    done
     
     success "Directories removed"
 }
