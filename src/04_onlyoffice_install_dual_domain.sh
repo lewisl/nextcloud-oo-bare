@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # OnlyOffice Installation Script for 2-Domain Setup
-# This script installs OnlyOffice for onlyoffice.DOMAIN.com with its own internal nginx
+# Installs and configures OnlyOffice Document Server to run behind the
+# system nginx reverse proxy on onlyoffice.DOMAIN.com.
 
 set -euo pipefail
 
@@ -14,600 +15,342 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-# Logging functions
-log() {
-    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')]${NC} $1"
-}
+# Logging helpers keep the original script style
+log()    { echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')]${NC} $1"; }
+error()  { echo -e "${RED}[ERROR]${NC} $1"; }
+warning(){ echo -e "${YELLOW}[WARNING]${NC} $1"; }
+info()   { echo -e "${BLUE}[INFO]${NC} $1"; }
+success(){ echo -e "${GREEN}[SUCCESS]${NC} $1"; }
+header() { echo -e "${CYAN}${BOLD}$1${NC}"; }
 
-error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
-warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
-
-info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
-
-success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
-
-header() {
-    echo -e "${CYAN}${BOLD}$1${NC}"
-}
-
-# Check if running as root
-check_root() {
+require_root() {
     if [[ $EUID -ne 0 ]]; then
         error "This script must be run as root (use sudo)"
         exit 1
     fi
 }
 
-# Load configuration
 load_config() {
-    if [[ ! -f "/etc/nextcloud-onlyoffice/params.yaml" ]]; then
-        error "Configuration file not found. Please run 01_system_prep_dual_domain.sh first."
+    local cfg="/etc/nextcloud-onlyoffice/params.yaml"
+    if [[ ! -f "$cfg" ]]; then
+        error "Configuration file $cfg not found. Run 01_system_prep_dual_domain.sh first."
         exit 1
     fi
-    
-    # Extract values from YAML (simple parsing)
-    BASE_DOMAIN=$(grep "base_domain:" /etc/nextcloud-onlyoffice/params.yaml | cut -d'"' -f2)
-    NEXTCLOUD_DOMAIN=$(grep "nextcloud_domain:" /etc/nextcloud-onlyoffice/params.yaml | cut -d'"' -f2)
-    ONLYOFFICE_DOMAIN=$(grep "onlyoffice_domain:" /etc/nextcloud-onlyoffice/params.yaml | cut -d'"' -f2)
-    ADMIN_EMAIL=$(grep "admin_email:" /etc/nextcloud-onlyoffice/params.yaml | cut -d'"' -f2)
-    
-    OO_DB_NAME=$(grep "db_name:" /etc/nextcloud-onlyoffice/params.yaml | tail -1 | cut -d'"' -f2)
-    OO_DB_USER=$(grep "db_user:" /etc/nextcloud-onlyoffice/params.yaml | tail -1 | cut -d'"' -f2)
-    OO_DB_PASSWORD=$(grep "db_password:" /etc/nextcloud-onlyoffice/params.yaml | tail -1 | cut -d'"' -f2)
-    
-    JWT_SECRET=$(grep "secret:" /etc/nextcloud-onlyoffice/params.yaml | cut -d'"' -f2)
-    
-    success "Configuration loaded"
+
+    BASE_DOMAIN=$(awk -F': *' '/^[[:space:]]*base_domain:/ {gsub(/[" ]/,"",$2); print $2; exit}' "$cfg")
+    NEXTCLOUD_DOMAIN=$(awk -F': *' '/^[[:space:]]*nextcloud_domain:/ {gsub(/[" ]/,"",$2); print $2; exit}' "$cfg")
+    ONLYOFFICE_DOMAIN=$(awk -F': *' '/^[[:space:]]*onlyoffice_domain:/ {gsub(/"/,"",$2); gsub(/[[:space:]]/ ,"", $2); print $2; exit}' "$cfg")
+    ADMIN_EMAIL=$(awk -F': *' '/^[[:space:]]*admin_email:/ {gsub(/"/,"",$2); gsub(/[[:space:]]/ ,"", $2); print $2; exit}' "$cfg")
+
+    OO_DB_NAME=$(awk -F': *' 'BEGIN{section=0} /^[[:space:]]*onlyoffice:/ {section=1; next} section && /^[[:space:]]*db_name:/ {gsub(/"/,"",$2); print $2; exit} /^[^[:space:]]/ {section=0}' "$cfg")
+    OO_DB_USER=$(awk -F': *' 'BEGIN{section=0} /^[[:space:]]*onlyoffice:/ {section=1; next} section && /^[[:space:]]*db_user:/ {gsub(/"/,"",$2); print $2; exit} /^[^[:space:]]/ {section=0}' "$cfg")
+    OO_DB_PASSWORD=$(awk -F': *' 'BEGIN{section=0} /^[[:space:]]*onlyoffice:/ {section=1; next} section && /^[[:space:]]*db_password:/ {gsub(/"/,"",$2); print $2; exit} /^[^[:space:]]/ {section=0}' "$cfg")
+
+    JWT_SECRET=$(awk -F': *' 'BEGIN{section=0} /^[[:space:]]*jwt:/ {section=1; next} section && /^[[:space:]]*secret:/ {gsub(/"/,"",$2); print $2; exit} /^[^[:space:]]/ {section=0}' "$cfg")
+
+    PARAMS_FILE="$cfg"
 }
 
-# Display banner
+ensure_jwt_secret() {
+    if [[ -z "$JWT_SECRET" ]]; then
+        JWT_SECRET=$(openssl rand -hex 32)
+        info "Generated new JWT secret"
+        if [[ -f "$PARAMS_FILE" ]]; then
+            python3 - "$PARAMS_FILE" "$JWT_SECRET" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+secret = sys.argv[2]
+lines = path.read_text().splitlines()
+for idx, line in enumerate(lines):
+    if line.strip().startswith('secret:'):
+        prefix = line.split('secret:')[0]
+        lines[idx] = f"{prefix}secret: \"{secret}\""
+        break
+path.write_text('\n'.join(lines) + '\n')
+PY
+        fi
+    fi
+}
+
 show_banner() {
     clear
     echo -e "${CYAN}${BOLD}"
-    cat << 'EOF'
+    cat <<'EOF'
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║                   2-DOMAIN ONLYOFFICE INSTALLATION                          ║
-║              Installing OnlyOffice for onlyoffice.DOMAIN.com                ║
+║          Installing OnlyOffice for onlyoffice.DOMAIN.com                    ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 EOF
     echo -e "${NC}"
     echo ""
-    info "Installing OnlyOffice for:"
-    info "  • Domain: $ONLYOFFICE_DOMAIN"
-    info "  • Database: $OO_DB_NAME (PostgreSQL)"
-    info "  • Architecture: Internal nginx + main nginx front-end"
+    info "OnlyOffice public domain : https://$ONLYOFFICE_DOMAIN"
+    info "Nextcloud domain         : https://$NEXTCLOUD_DOMAIN"
+    info "PostgreSQL database      : $OO_DB_NAME (user: $OO_DB_USER)"
     echo ""
 }
 
-# Add OnlyOffice repository
+ensure_prerequisites() {
+    header "Installing prerequisites"
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -y
+    apt-get install -y curl gnupg ca-certificates apt-transport-https jq > /dev/null
+    success "Base packages present"
+}
+
 add_onlyoffice_repo() {
-    header "Adding OnlyOffice Repository"
-    
-    log "Adding OnlyOffice repository..."
-    
-    # Add GPG key
-    wget -O - https://download.onlyoffice.com/GPG-KEY-ONLYOFFICE | apt-key add -
-    
-    # Add repository
-    echo "deb https://download.onlyoffice.com/repo/debian squeeze main" | tee /etc/apt/sources.list.d/onlyoffice.list
-    
-    # Update package lists
-    apt update
-    
-    success "OnlyOffice repository added"
+    header "Adding OnlyOffice repository"
+    local keyring="/usr/share/keyrings/onlyoffice.gpg"
+    curl -fsSL https://download.onlyoffice.com/GPG-KEY-ONLYOFFICE | gpg --dearmor -o "$keyring"
+    echo "deb [signed-by=$keyring] https://download.onlyoffice.com/repo/debian squeeze main" \
+        > /etc/apt/sources.list.d/onlyoffice.list
+    apt-get update -y
+    success "OnlyOffice repository configured"
 }
 
-# Install OnlyOffice Document Server
-install_onlyoffice() {
+install_onlyoffice_packages() {
     header "Installing OnlyOffice Document Server"
-    
-    log "Installing OnlyOffice Document Server..."
-    
-    # Install OnlyOffice Document Server
-    apt install -y onlyoffice-documentserver
-    
-    success "OnlyOffice Document Server installed"
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get install -y onlyoffice-documentserver
+    success "OnlyOffice packages installed"
 }
 
-# Configure OnlyOffice
-configure_onlyoffice() {
-    header "Configuring OnlyOffice"
-    
-    log "Configuring OnlyOffice Document Server..."
-    
-    # Create OnlyOffice configuration directory
-    mkdir -p /etc/onlyoffice/documentserver
-    
-    # Configure local.json
-    cat > /etc/onlyoffice/documentserver/local.json << EOF
-{
-  "services": {
-    "CoAuthoring": {
-      "sql": {
-        "type": "postgres",
-        "dbHost": "localhost",
-        "dbPort": "5432",
-        "dbName": "$OO_DB_NAME",
-        "dbUser": "$OO_DB_USER",
-        "dbPass": "$OO_DB_PASSWORD"
-      },
-      "redis": {
-        "host": "localhost",
-        "port": "6379"
-      },
-      "secret": {
-        "inbox": {
-          "string": "$JWT_SECRET"
-        },
-        "outbox": {
-          "string": "$JWT_SECRET"
-        }
-      }
-    }
-  },
-  "rabbitmq": {
-    "url": "amqp://guest:guest@localhost"
-  }
-}
-EOF
-    
-    # Set permissions
-    chown -R ds:ds /etc/onlyoffice/documentserver
-    chmod 600 /etc/onlyoffice/documentserver/local.json
-    
-    success "OnlyOffice configured"
-}
-
-# Configure OnlyOffice internal nginx
-configure_onlyoffice_nginx() {
-    header "Configuring OnlyOffice Internal Nginx"
-    
-    log "Configuring OnlyOffice internal nginx..."
-    
-    # OnlyOffice comes with its own nginx configuration
-    # We need to modify it to work with our dual-domain setup
-    
-    local nginx_conf="/etc/onlyoffice/documentserver/nginx/ds.conf"
-    
-    if [[ -f "$nginx_conf" ]]; then
-        # Backup original configuration
-        cp "$nginx_conf" "$nginx_conf.backup"
-        
-        # Modify nginx configuration for internal use
-        cat > "$nginx_conf" << 'EOF'
-upstream backend {
-    server 127.0.0.1:8080;
-}
-
-upstream converter {
-    server 127.0.0.1:8080;
-}
-
-upstream docservice {
-    server 127.0.0.1:8080;
-}
-
-upstream example {
-    server 127.0.0.1:8080;
-}
-
-map $http_host $this_host {
-    "" $host;
-    default $http_host;
-}
-
-map $http_x_forwarded_proto $the_scheme {
-    default $http_x_forwarded_proto;
-    "" $scheme;
-}
-
-map $http_x_forwarded_host $the_host {
-    default $http_x_forwarded_host;
-    "" $this_host;
-}
-
-map $http_upgrade $proxy_connection {
-    default upgrade;
-    "" close;
-}
-
-proxy_cache_path /var/cache/nginx/onlyoffice-documentserver levels=1:2 keys_zone=onlyoffice_cache:10m max_size=3g inactive=120m use_temp_path=off;
-
-server {
-    listen 127.0.0.1:8080;
-    server_name _;
-    
-    # Security headers
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header Referrer-Policy "no-referrer-when-downgrade" always;
-    
-    # Gzip compression
-    gzip on;
-    gzip_vary on;
-    gzip_proxied any;
-    gzip_comp_level 6;
-    gzip_types
-        text/plain
-        text/css
-        text/xml
-        text/javascript
-        application/json
-        application/javascript
-        application/xml+rss
-        application/atom+xml
-        image/svg+xml;
-    
-    # OnlyOffice Document Server
-    location / {
-        proxy_pass http://docservice;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $proxy_connection;
-        proxy_set_header X-Forwarded-Host $the_host;
-        proxy_set_header X-Forwarded-Proto $the_scheme;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header Host $http_host;
-        proxy_cache onlyoffice_cache;
-        proxy_cache_valid 200 302 10m;
-        proxy_cache_valid 404 1m;
-        proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
-        proxy_cache_lock on;
-        proxy_cache_lock_timeout 5s;
-    }
-    
-    # Health check
-    location /healthcheck {
-        access_log off;
-        return 200 "healthy\n";
-        add_header Content-Type text/plain;
-    }
-    
-    # Static files
-    location ~* \.(css|js|png|jpg|jpeg|gif|ico|svg)$ {
-        proxy_pass http://docservice;
-        proxy_set_header Host $http_host;
-        proxy_cache onlyoffice_cache;
-        proxy_cache_valid 200 1d;
-        expires 1d;
-        add_header Cache-Control "public, immutable";
-    }
-}
-EOF
+configure_local_json() {
+    header "Configuring /etc/onlyoffice/documentserver/local.json"
+    local cfg="/etc/onlyoffice/documentserver/local.json"
+    local dir="$(dirname "$cfg")"
+    mkdir -p "$dir"
+    if [[ ! -f "$cfg" ]]; then
+        echo '{}' > "$cfg"
     fi
-    
-    success "OnlyOffice internal nginx configured"
+
+    python3 - "$cfg" "$JWT_SECRET" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+cfg = Path(sys.argv[1])
+secret = sys.argv[2]
+
+try:
+    data = json.loads(cfg.read_text())
+except Exception:
+    data = {}
+
+services = data.setdefault('services', {})
+coauthoring = services.setdefault('CoAuthoring', {})
+coauthoring['server'] = {"ip": "127.0.0.1", "port": 8000}
+
+token = coauthoring.setdefault('token', {})
+token['enable'] = True
+token['inbox'] = {"string": secret}
+token['outbox'] = {"string": secret}
+token['browser'] = {"string": secret}
+token['authorizationHeader'] = "Authorization"
+
+rabbitmq = data.setdefault('rabbitmq', {})
+rabbitmq.setdefault('url', 'amqp://guest:guest@localhost')
+
+cfg.write_text(json.dumps(data, indent=2) + '\n')
+PY
+
+    chown ds:ds "$cfg"
+    chmod 600 "$cfg"
+    success "local.json updated with JWT secret and loopback binding"
 }
 
-# Configure main nginx for OnlyOffice
+configure_internal_nginx() {
+    header "Configuring OnlyOffice internal nginx"
+    local conf="/etc/onlyoffice/documentserver/nginx/ds.conf"
+    if [[ ! -f "$conf" ]]; then
+        warning "OnlyOffice nginx configuration not found ($conf)"
+        return
+    fi
+
+    cp "$conf" "$conf.bak.$(date +%s)"
+
+    sed -i 's/listen 0\.0\.0\.0:80;/listen 127.0.0.1:8080;/' "$conf"
+    if grep -q 'listen \[::\]:80;' "$conf"; then
+        sed -i 's/listen \[::\]:80;/# listen [::]:80; # disabled for loopback proxy/' "$conf"
+    fi
+
+    if ! grep -q 'proxy_set_header X-Forwarded-Proto $the_scheme;' "$conf"; then
+        warning "Expected proxy headers missing in $conf; review manually."
+    fi
+
+    success "Internal nginx configured to listen on 127.0.0.1:8080"
+}
+
 configure_main_nginx() {
-    header "Configuring Main Nginx for OnlyOffice"
-    
-    log "Creating main nginx configuration for $ONLYOFFICE_DOMAIN..."
-    
-    # Create nginx configuration for OnlyOffice
-    cat > "/etc/nginx/sites-available/$ONLYOFFICE_DOMAIN" << EOF
-# OnlyOffice configuration for $ONLYOFFICE_DOMAIN
+    header "Configuring main nginx for $ONLYOFFICE_DOMAIN"
+    local site="/etc/nginx/sites-available/$ONLYOFFICE_DOMAIN"
+    local https_block=""
+    local cert="/etc/letsencrypt/live/$ONLYOFFICE_DOMAIN/fullchain.pem"
+    local key="/etc/letsencrypt/live/$ONLYOFFICE_DOMAIN/privkey.pem"
+    if [[ -f "$cert" && -f "$key" ]]; then
+        https_block="server {\n    listen 443 ssl http2;\n    listen [::]:443 ssl http2;\n    server_name $ONLYOFFICE_DOMAIN;\n\n    ssl_certificate     $cert;\n    ssl_certificate_key $key;\n    ssl_session_timeout 1d;\n    ssl_session_cache shared:SSL:10m;\n    ssl_protocols TLSv1.2 TLSv1.3;\n\n    add_header Strict-Transport-Security \"max-age=63072000\" always;\n    add_header X-Frame-Options \"SAMEORIGIN\" always;\n    add_header X-Content-Type-Options \"nosniff\" always;\n    add_header Referrer-Policy \"no-referrer-when-downgrade\" always;\n\n    location / {\n        proxy_pass http://127.0.0.1:8080;\n        proxy_http_version 1.1;\n        proxy_set_header Host              \$host;\n        proxy_set_header X-Real-IP         \$remote_addr;\n        proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto \$scheme;\n        proxy_set_header Upgrade           \$http_upgrade;\n        proxy_set_header Connection        \"upgrade\";\n        client_max_body_size 200m;\n        proxy_read_timeout 360s;\n        proxy_send_timeout 360s;\n        proxy_buffering off;\n    }\n\n    location /healthcheck {\n        proxy_pass http://127.0.0.1:8080/healthcheck;\n        access_log off;\n    }\n}\n"
+    else
+        warning "TLS certificates not found for $ONLYOFFICE_DOMAIN; configuring HTTP-only vhost"
+    fi
+
+    cat > "$site" <<EOF
+# OnlyOffice public reverse proxy
 server {
     listen 80;
     listen [::]:80;
     server_name $ONLYOFFICE_DOMAIN;
-    
-    # Redirect HTTP to HTTPS (will be enabled after SSL setup)
-    # return 301 https://\$server_name\$request_uri;
-    
-    # Temporary HTTP configuration for initial setup
-    # Proxy to OnlyOffice internal nginx
+
     location / {
         proxy_pass http://127.0.0.1:8080;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header X-Forwarded-Host \$server_name;
-        
-        # WebSocket support
         proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-        
-        # Timeouts
-        proxy_connect_timeout 60s;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
-        
-        # File upload size
-        client_max_body_size 100M;
+        proxy_set_header Host              \$host;
+        proxy_set_header X-Real-IP         \$remote_addr;
+        proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Upgrade           \$http_upgrade;
+        proxy_set_header Connection        "upgrade";
+        client_max_body_size 200m;
+        proxy_read_timeout 360s;
+        proxy_send_timeout 360s;
+        proxy_buffering off;
     }
-    
-    # Health check
+
     location /healthcheck {
         proxy_pass http://127.0.0.1:8080/healthcheck;
         access_log off;
     }
 }
+
+$https_block
 EOF
-    
-    # Enable the site
-    ln -sf "/etc/nginx/sites-available/$ONLYOFFICE_DOMAIN" "/etc/nginx/sites-enabled/"
-    
-    # Test nginx configuration
+
+    ln -sf "$site" "/etc/nginx/sites-enabled/$ONLYOFFICE_DOMAIN"
     nginx -t
-    
-    # Reload nginx
     systemctl reload nginx
-    
-    success "Main nginx configured for OnlyOffice"
+    success "Main nginx site enabled"
 }
 
-# Start OnlyOffice services
-start_onlyoffice_services() {
-    header "Starting OnlyOffice Services"
-    
-    log "Starting OnlyOffice Document Server services..."
-    
-    # Start OnlyOffice services
-    systemctl start ds-docservice
-    systemctl start ds-converter
-    systemctl start ds-metrics
-    
-    # Enable services
-    systemctl enable ds-docservice
-    systemctl enable ds-converter
-    systemctl enable ds-metrics
-    
-    # Wait for services to start
-    sleep 10
-    
-    # Check if services are running
-    local services=("ds-docservice" "ds-converter" "ds-metrics")
-    for service in "${services[@]}"; do
-        if systemctl is-active --quiet "$service"; then
-            success "$service is running"
-        else
-            warning "$service is not running, attempting to start..."
-            systemctl start "$service"
-            sleep 5
-            if systemctl is-active --quiet "$service"; then
-                success "$service started successfully"
-            else
-                error "$service failed to start"
-            fi
+restart_documentserver() {
+    header "Restarting OnlyOffice services"
+    local restarted=0
+    if systemctl list-unit-files | grep -q '^onlyoffice-documentserver\.service'; then
+        systemctl enable onlyoffice-documentserver >/dev/null 2>&1 || true
+        systemctl restart onlyoffice-documentserver
+        restarted=1
+    fi
+
+    local units=(ds-docservice ds-converter ds-metrics)
+    for unit in "${units[@]}"; do
+        if systemctl list-unit-files | grep -q "^${unit}\.service"; then
+            systemctl enable "$unit" >/dev/null 2>&1 || true
+            systemctl restart "$unit"
+            restarted=1
         fi
     done
+
+    if [[ $restarted -eq 0 ]] && command -v supervisorctl >/dev/null 2>&1; then
+        warning "Falling back to supervisorctl for Document Server"
+        supervisorctl reread && supervisorctl update && supervisorctl restart all
+    fi
+
+    sleep 5
 }
 
-# Configure JWT secret
-configure_jwt() {
-    header "Configuring JWT Secret"
-    
-    log "Configuring JWT secret for OnlyOffice..."
-    
-    # Update OnlyOffice configuration with JWT secret
-    local local_json="/etc/onlyoffice/documentserver/local.json"
-    
-    if [[ -f "$local_json" ]]; then
-        # Update JWT secret in configuration
-        sed -i "s/\"string\": \"[^\"]*\"/\"string\": \"$JWT_SECRET\"/g" "$local_json"
-        
-        # Restart OnlyOffice services
-        systemctl restart ds-docservice
-        systemctl restart ds-converter
-        systemctl restart ds-metrics
-        
-        success "JWT secret configured"
+run_health_checks() {
+    header "Running health checks"
+    local internal=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/healthcheck || echo 000)
+    if [[ "$internal" == "200" ]]; then
+        success "Internal healthcheck OK"
     else
-        error "OnlyOffice configuration file not found"
-        return 1
+        warning "Internal healthcheck returned $internal"
     fi
-}
 
-# Test OnlyOffice installation
-test_installation() {
-    header "Testing OnlyOffice Installation"
-    
-    log "Testing OnlyOffice installation..."
-    
-    # Test internal nginx
-    local internal_response=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8080/healthcheck" || echo "000")
-    
-    if [[ "$internal_response" == "200" ]]; then
-        success "OnlyOffice internal nginx is working"
+    local discovery=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/hosting/discovery || echo 000)
+    if [[ "$discovery" == "200" ]]; then
+        success "Discovery endpoint reachable"
     else
-        warning "OnlyOffice internal nginx may not be ready yet (HTTP $internal_response)"
-    fi
-    
-    # Test main nginx proxy
-    local main_response=$(curl -s -o /dev/null -w "%{http_code}" "http://$ONLYOFFICE_DOMAIN/healthcheck" || echo "000")
-    
-    if [[ "$main_response" == "200" ]]; then
-        success "OnlyOffice main nginx proxy is working"
-    else
-        warning "OnlyOffice main nginx proxy may not be ready yet (HTTP $main_response)"
-        info "This is normal if SSL certificates haven't been set up yet"
-    fi
-    
-    # Test OnlyOffice API
-    local api_response=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8080/healthcheck" || echo "000")
-    
-    if [[ "$api_response" == "200" ]]; then
-        success "OnlyOffice API is responding"
-    else
-        warning "OnlyOffice API may not be ready yet (HTTP $api_response)"
+        warning "Discovery endpoint HTTP $discovery"
     fi
 }
 
-# Create backup script
 create_backup_script() {
-    header "Creating Backup Script"
-    
-    cat > /usr/local/bin/backup-onlyoffice.sh << 'EOF'
+    header "Ensuring OnlyOffice backup helper"
+    cat > /usr/local/bin/backup-onlyoffice.sh <<'EOS'
 #!/bin/bash
-# OnlyOffice backup script
-
+set -euo pipefail
 BACKUP_DIR="/var/backups/onlyoffice"
 DATE=$(date +%Y%m%d_%H%M%S)
-CONFIG_DIR="/etc/onlyoffice"
-
 mkdir -p "$BACKUP_DIR"
-
-# Backup OnlyOffice configuration
 tar -czf "$BACKUP_DIR/onlyoffice-config-$DATE.tar.gz" -C /etc onlyoffice
-
-# Keep only last 7 days of backups
-find "$BACKUP_DIR" -name "*.tar.gz" -mtime +7 -delete
-
-echo "OnlyOffice backup completed: $DATE"
-EOF
-    
+echo "OnlyOffice config backup: $BACKUP_DIR/onlyoffice-config-$DATE.tar.gz"
+find "$BACKUP_DIR" -name 'onlyoffice-config-*.tar.gz' -mtime +7 -delete
+EOS
     chmod +x /usr/local/bin/backup-onlyoffice.sh
-    
-    # Add to daily backup
-    echo "/usr/local/bin/backup-onlyoffice.sh" >> /etc/cron.daily/backup-databases
-    
-    success "Backup script created"
+    success "Backup script ready"
 }
 
-# Save installation info
 save_installation_info() {
-    header "Saving Installation Information"
-    
-    cat > /root/onlyoffice_installation_info.txt << EOF
-# OnlyOffice Installation Information
-# Generated on: $(date)
+    header "Saving installation notes"
+    cat > /root/onlyoffice_installation_info.txt <<EOF
+# OnlyOffice Installation - $(date)
+Public URL : https://$ONLYOFFICE_DOMAIN
+Internal   : http://127.0.0.1:8080
+Health     : http://$ONLYOFFICE_DOMAIN/healthcheck
 
-## Access Information
-URL: http://$ONLYOFFICE_DOMAIN (will be https:// after SSL setup)
-Internal URL: http://127.0.0.1:8080
-Health Check: http://$ONLYOFFICE_DOMAIN/healthcheck
+Database   : $OO_DB_NAME (user $OO_DB_USER)
+JWT secret : $JWT_SECRET
 
-## Configuration
-Config Directory: /etc/onlyoffice/documentserver
-Config File: /etc/onlyoffice/documentserver/local.json
-Internal Nginx: /etc/onlyoffice/documentserver/nginx/ds.conf
-Main Nginx: /etc/nginx/sites-available/$ONLYOFFICE_DOMAIN
-
-## Database Information
-Database: $OO_DB_NAME
-Username: $OO_DB_USER
-Password: $OO_DB_PASSWORD
-Host: localhost
-Port: 5432
-
-## JWT Configuration
-Secret: $JWT_SECRET
-
-## Services
-- ds-docservice: Document service
-- ds-converter: Document converter
-- ds-metrics: Metrics service
-
-## Backup Scripts
-OnlyOffice: /usr/local/bin/backup-onlyoffice.sh
-Database: /usr/local/bin/backup-postgresql.sh
-
-## Next Steps
-1. Run: ./05_nginx_config_dual_domain.sh
-2. Run: ./06_ssl_setup_dual_domain.sh
-3. Run: ./07_integration_config_dual_domain.sh
+Key files:
+  - /etc/onlyoffice/documentserver/local.json
+  - /etc/onlyoffice/documentserver/nginx/ds.conf
+  - /etc/nginx/sites-available/$ONLYOFFICE_DOMAIN
 EOF
-    
     chmod 600 /root/onlyoffice_installation_info.txt
-    success "Installation information saved"
+    success "Installation notes saved"
 }
 
-# Final verification
 verify_installation() {
-    header "Verifying OnlyOffice Installation"
-    
+    header "Final verification"
     local issues=0
-    
-    # Check if OnlyOffice is installed
-    if command -v ds-docservice >/dev/null 2>&1; then
-        success "OnlyOffice Document Server installed"
+
+    if ! systemctl status onlyoffice-documentserver >/dev/null 2>&1; then
+        warning "onlyoffice-documentserver service not reporting healthy"
+        ((issues++))
     else
-        error "OnlyOffice Document Server not found"
+        success "onlyoffice-documentserver running"
+    fi
+
+    if curl -s http://127.0.0.1:8080/hosting/discovery >/dev/null; then
+        success "Discovery XML reachable"
+    else
+        warning "Discovery XML not reachable"
         ((issues++))
     fi
-    
-    # Check configuration file
-    if [[ -f "/etc/onlyoffice/documentserver/local.json" ]]; then
-        success "OnlyOffice configuration created"
-    else
-        error "OnlyOffice configuration missing"
-        ((issues++))
-    fi
-    
-    # Check nginx configuration
-    if [[ -f "/etc/nginx/sites-available/$ONLYOFFICE_DOMAIN" ]]; then
-        success "Main nginx configuration created"
-    else
-        error "Main nginx configuration missing"
-        ((issues++))
-    fi
-    
-    # Check if site is enabled
-    if [[ -L "/etc/nginx/sites-enabled/$ONLYOFFICE_DOMAIN" ]]; then
-        success "Main nginx site enabled"
-    else
-        error "Main nginx site not enabled"
-        ((issues++))
-    fi
-    
-    # Check services
-    local services=("ds-docservice" "ds-converter" "ds-metrics")
-    for service in "${services[@]}"; do
-        if systemctl is-active --quiet "$service"; then
-            success "$service is running"
-        else
-            warning "$service is not running"
-            ((issues++))
-        fi
-    done
-    
+
     if [[ $issues -eq 0 ]]; then
-        success "OnlyOffice installation completed successfully!"
-        echo ""
-        info "OnlyOffice is available at: http://$ONLYOFFICE_DOMAIN"
-        info "Internal OnlyOffice is available at: http://127.0.0.1:8080"
-        info "Installation info saved to: /root/onlyoffice_installation_info.txt"
-        echo ""
-        info "Next steps:"
-        info "  1. Run: ./05_nginx_config_dual_domain.sh"
-        info "  2. Run: ./06_ssl_setup_dual_domain.sh"
-        info "  3. Run: ./07_integration_config_dual_domain.sh"
+        success "OnlyOffice installation completed successfully"
     else
-        error "OnlyOffice installation completed with $issues issues"
-        exit 1
+        warning "OnlyOffice installation finished with $issues issues"
     fi
 }
 
-# Main execution
 main() {
-    check_root
+    require_root
     load_config
+    ensure_jwt_secret
     show_banner
+    ensure_prerequisites
     add_onlyoffice_repo
-    install_onlyoffice
-    configure_onlyoffice
-    configure_onlyoffice_nginx
+    install_onlyoffice_packages
+    configure_local_json
+    configure_internal_nginx
     configure_main_nginx
-    start_onlyoffice_services
-    configure_jwt
-    test_installation
+    restart_documentserver
+    run_health_checks
     create_backup_script
     save_installation_info
     verify_installation
 }
 
-# Run main function
 main "$@"

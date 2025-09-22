@@ -1,18 +1,15 @@
 deployment:
-  base_domain: "test-collab-site.com"
-  nextcloud_domain: "docs.test-collab-site.com"
-  onlyoffice_domain: "onlyoffice.test-collab-site.com"
-  admin_email: "lewis@neilson-levin.org"
-
+  base_domain: test-collab-site.com
+  nextcloud_domain: docs.test-collab-site.com
+  onlyoffice_domain: onlyoffice.test-collab-site.com
+  admin_email: lewis@neilson-levin.org
 nextcloud:
-  db_name: "nextcloud"
-  db_user: "ncuser"
-  db_password: "PqPRuYIudTTn2WlnKpIrckEWk"
-
+  db_name: nextcloud
+  db_user: ncuser
+  db_password: PqPRuYIudTTn2WlnKpIrckEWk
 onlyoffice:
-  db_name: "onlyoffice"
-  db_user: "oouser"
-  db_password: "zVeMb1KGUxw56aX9hBxOKD7G2"
-
+  db_name: onlyoffice
+  db_user: oouser
+  db_password: zVeMb1KGUxw56aX9hBxOKD7G2
 jwt:
-  secret: ""
+  secret: 1cc880382bce64842006d1070f9e551391e67c37fa758975cbd2c2ad6652c637
