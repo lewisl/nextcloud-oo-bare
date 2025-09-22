@@ -116,6 +116,24 @@ install_onlyoffice_packages() {
     success "OnlyOffice packages installed"
 }
 
+initialize_database() {
+    header "Ensuring DocumentServer database schema"
+
+    local tables
+    tables=$(sudo -u postgres psql -d "$OO_DB_NAME" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('doc_changes','task_result');" 2>/dev/null || echo "0")
+
+    if [[ "$tables" != "2" ]]; then
+        info "Creating DocumentServer tables in $OO_DB_NAME"
+        sudo -u postgres psql -d "$OO_DB_NAME" -f /var/www/onlyoffice/documentserver/server/schema/postgresql/createdb.sql
+    else
+        success "DocumentServer tables already present"
+    fi
+
+    sudo -u postgres psql -d "$OO_DB_NAME" -c "ALTER TABLE doc_changes OWNER TO \"$OO_DB_USER\";" >/dev/null
+    sudo -u postgres psql -d "$OO_DB_NAME" -c "ALTER TABLE task_result OWNER TO \"$OO_DB_USER\";" >/dev/null
+    success "DocumentServer tables owned by $OO_DB_USER"
+}
+
 configure_local_json() {
     header "Configuring /etc/onlyoffice/documentserver/local.json"
     local cfg="/etc/onlyoffice/documentserver/local.json"
@@ -125,13 +143,16 @@ configure_local_json() {
         echo '{}' > "$cfg"
     fi
 
-    python3 - "$cfg" "$JWT_SECRET" <<'PY'
+    python3 - "$cfg" "$JWT_SECRET" "$OO_DB_NAME" "$OO_DB_USER" "$OO_DB_PASSWORD" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 cfg = Path(sys.argv[1])
 secret = sys.argv[2]
+db_name = sys.argv[3]
+db_user = sys.argv[4]
+db_pass = sys.argv[5]
 
 try:
     data = json.loads(cfg.read_text())
@@ -139,18 +160,32 @@ except Exception:
     data = {}
 
 services = data.setdefault('services', {})
-coauthoring = services.setdefault('CoAuthoring', {})
-coauthoring['server'] = {"ip": "127.0.0.1", "port": 8000}
+co = services.setdefault('CoAuthoring', {})
+co['server'] = {"ip": "127.0.0.1", "port": 8000}
 
-token = coauthoring.setdefault('token', {})
-token['enable'] = True
-token['inbox'] = {"string": secret}
-token['outbox'] = {"string": secret}
-token['browser'] = {"string": secret}
-token['authorizationHeader'] = "Authorization"
+sql = co.setdefault('sql', {})
+sql.update({"type": "postgres", "dbHost": "localhost", "dbPort": "5432", "dbName": db_name, "dbUser": db_user, "dbPass": db_pass})
+
+token = co.setdefault('token', {})
+token['enable'] = {"browser": True, "request": {"inbox": True, "outbox": True}}
+token['browser'] = {"secretFromInbox": False}
+token['inbox'] = {"header": "Authorization", "prefix": "Bearer ", "inBody": False}
+token['outbox'] = {"header": "Authorization", "prefix": "Bearer ", "algorithm": "HS256", "expires": "5m", "inBody": False, "urlExclusionRegex": ""}
+token['session'] = {"algorithm": "HS256", "expires": "30d"}
+token['verifyOptions'] = {"clockTolerance": 60}
+
+co['secret'] = {
+    "browser": {"string": secret, "file": ""},
+    "inbox": {"string": secret, "file": ""},
+    "outbox": {"string": secret, "file": ""},
+    "session": {"string": secret, "file": ""}
+}
 
 rabbitmq = data.setdefault('rabbitmq', {})
 rabbitmq.setdefault('url', 'amqp://guest:guest@localhost')
+
+wopi = data.setdefault('wopi', {})
+wopi['enable'] = True
 
 cfg.write_text(json.dumps(data, indent=2) + '\n')
 PY
@@ -343,6 +378,7 @@ main() {
     ensure_prerequisites
     add_onlyoffice_repo
     install_onlyoffice_packages
+    initialize_database
     configure_local_json
     configure_internal_nginx
     configure_main_nginx
