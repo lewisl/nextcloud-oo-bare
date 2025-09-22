@@ -1,8 +1,6 @@
 # OnlyOffice reverse proxy for onlyoffice.test-collab-site.com
-# HTTP block remains active even after enabling HTTPS so that cert renewals succeed.
 server {
     listen 80;
-    listen [::]:80;
     server_name onlyoffice.test-collab-site.com;
 
     location / {
@@ -28,17 +26,15 @@ server {
 
 server {
     listen 443 ssl http2;
-    listen [::]:443 ssl http2;
     server_name onlyoffice.test-collab-site.com;
 
     ssl_certificate     /etc/letsencrypt/live/onlyoffice.test-collab-site.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/onlyoffice.test-collab-site.com/privkey.pem;
     ssl_session_timeout 1d;
-    ssl_session_cache shared:SSL:10m;
+    ssl_session_cache shared:SSL:50m;
     ssl_protocols TLSv1.2 TLSv1.3;
 
-    add_header Strict-Transport-Security "max-age=63072000" always;
-    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Content-Security-Policy "frame-ancestors 'self' https://docs.test-collab-site.com" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "no-referrer-when-downgrade" always;
 
