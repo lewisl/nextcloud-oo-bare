@@ -33,7 +33,7 @@ Databases:
 ## Requirements
 
 ### System Requirements
-- **OS**: Ubuntu 20.04+ or Debian 11+
+- **OS**: Ubuntu 22.04+ or Debian 11+
 - **RAM**: 4GB minimum, 8GB recommended
 - **CPU**: 2 cores minimum, 4 cores recommended
 - **Storage**: 20GB minimum, 100GB+ recommended
