@@ -4,7 +4,7 @@ This document maintains the current best versions of all important configuration
 
 ## OnlyOffice Document Server Configuration
 
-### Current Working Configuration (as of 2025-09-15)
+### Current Working Configuration (validated 2025-09-24)
 
 **File:** `/etc/onlyoffice/documentserver/local.json`
 
@@ -36,9 +36,10 @@ This document maintains the current best versions of all important configuration
         "url": "amqp://guest:guest@127.0.0.1:5672"
       },
       "secret": {
-        "inbox": { "string": "GeE90SG6xtH@%N" },
-        "outbox": { "string": "GeE90SG6xtH@%N" },
-        "session": { "string": "GeE90SG6xtH@%N" }
+        "browser": { "string": "1cc880382bce64842006d1070f9e551391e67c37fa758975cbd2c2ad6652c637", "file": "" },
+        "inbox":   { "string": "1cc880382bce64842006d1070f9e551391e67c37fa758975cbd2c2ad6652c637", "file": "" },
+        "outbox":  { "string": "1cc880382bce64842006d1070f9e551391e67c37fa758975cbd2c2ad6652c637", "file": "" },
+        "session": { "string": "1cc880382bce64842006d1070f9e551391e67c37fa758975cbd2c2ad6652c637", "file": "" }
       },
       "token": {
         "enable": {
@@ -53,7 +54,7 @@ This document maintains the current best versions of all important configuration
 }
 ```
 
-**Status:** ✅ PARTIALLY WORKING - service binding to IPv4 (127.0.0.1:8000) but OnlyOffice not reachable from NextCloud
+**Status:** ✅ Document Server bound to IPv4 loopback and reachable locally; public access now fronted exclusively by the Nextcloud `/onlyoffice/` subpath
 
 **Current Configuration (JWT Disabled for Testing):**
 ```json
@@ -73,69 +74,56 @@ This document maintains the current best versions of all important configuration
 3. ✅ Proper IPv4 binding for nginx proxy working
 4. ✅ Discovery endpoint accessible via nginx proxy
 
-**Current issues:**
-1. ❌ NextCloud connection test still failing: "Error while downloading the document file to be converted"
-2. ❌ OnlyOffice not reachable at all (proves it's not about JWT)
-3. ✅ PDF viewer working
-4. ✅ Image viewer working  
-5. ✅ Markdown documents work and can be edited
-6. ✅ NextCloud apps functioning properly
+**Validation notes (2025-09-24):**
+1. ✅ `/onlyoffice/` proxy confirmed with `healthcheck`, `hosting/discovery`, and `api.js`
+2. ✅ OCC connector check returns "Document server … successfully connected"
+3. ✅ Browser smoke tests pass for `.docx`, `.xlsx`, `.pptx`, `.pdf`, and built-in viewers
 
 ### NextCloud OnlyOffice App Configuration
 
 **Current settings:**
-- DocumentServerUrl: `https://onlyoffice.test-collab-site.com/`
-- DocumentServerInternalUrl: `http://127.0.0.1:8080/` (nginx proxy)
-- JWT Secret: `GeE90SG6xtH@%N`
+- DocumentServerUrl: `https://docs.<domain>/onlyoffice/`
+- DocumentServerInternalUrl: `http://127.0.0.1:8080/`
+- StorageUrl: `https://docs.<domain>/`
+- JWT Secret: `1cc880382bce64842006d1070f9e551391e67c37fa758975cbd2c2ad6652c637`
+- JWT Header: `AuthorizationJwt`
 - JWT Enabled: `true`
 
-**Status:** Configured but connection failing due to OnlyOffice service issues
+**Status:** ✅ One-domain subpath mode active; OCC commands above are idempotent for reruns
 
 ## Nginx Configuration
 
 **File:** `/etc/nginx/sites-available/docs.test-collab-site.com`
 
-**OnlyOffice proxy section:**
+**OnlyOffice proxy section (subpath mode):**
 ```nginx
-# OnlyOffice integration
+# OnlyOffice editor under /onlyoffice/
 location ^~ /onlyoffice/ {
-    proxy_pass http://127.0.0.1:8080/;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header X-Forwarded-Host $server_name;
-
-    # WebSocket support
+    proxy_pass         http://127.0.0.1:8080/;
     proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection $connection_upgrade;
-    proxy_read_timeout 3600s;
-    proxy_send_timeout 3600s;
-    client_max_body_size 100M;
+
+    proxy_set_header   Host               $host;
+    proxy_set_header   X-Real-IP          $remote_addr;
+    proxy_set_header   X-Forwarded-For    $proxy_add_x_forwarded_for;
+    proxy_set_header   X-Forwarded-Proto  $scheme;
+    proxy_set_header   X-Forwarded-Host   $host;
+    proxy_set_header   X-Forwarded-Prefix /onlyoffice;
+    proxy_set_header   Upgrade            $http_upgrade;
+    proxy_set_header   Connection         $connection_upgrade;
+
+    client_max_body_size 200m;
+    proxy_read_timeout    3600s;
+    proxy_send_timeout    3600s;
+    proxy_buffering       off;
+    proxy_redirect        off;
 }
 ```
 
-**Status:** Working - nginx is listening on port 8080 and proxying to OnlyOffice
+**Status:** ✅ Live configuration in production test; requires `/etc/nginx/conf.d/00_websocket_upgrade_map.conf`
 
-## Issues to Resolve
+## Follow-up Actions
 
-1. **OnlyOffice IPv4 Binding:** Service needs to bind to 127.0.0.1:8000 (IPv4) not :::8000 (IPv6)
-2. **Secret Parameters:** Need to verify which 3 secret parameters are actually required
-3. **Service Communication:** OnlyOffice docservice needs to be accessible via IPv4 for nginx proxy
-
-## Last Known Working State
-
-Before the regression, the system was working with:
-- NextCloud accessible at `https://docs.test-collab-site.com`
-- OnlyOffice accessible at `https://onlyoffice.test-collab-site.com`
-- OnlyOffice integration working in NextCloud
-- Document editing functional
-
-## Recovery Plan
-
-1. Fix OnlyOffice IPv4 binding issue
-2. Verify correct secret parameters (3 instead of 4?)
-3. Test end-to-end document editing functionality
-4. Update this document with working configuration
-5. Commit working state to version control
+1. Keep legacy `onlyoffice.<domain>` nginx vhost on disk (disabled) for emergency rollback.
+2. Remove `onlyoffice.<domain>` from certbot renewal set once production cutover is complete.
+3. Integrate the validated nginx + OCC steps into automation scripts after documentation updates.
+4. Run `./src/99_diagnostics.sh` post-change and archive results with date stamps.

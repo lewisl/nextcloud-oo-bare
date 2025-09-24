@@ -104,3 +104,58 @@ After analysis, we’ll:
 * * *
 
 ✅ This way, we stop improvising and move into a **diagnose → analyze → fix** loop with artifacts we can review.
+
+---
+
+## One-Domain OnlyOffice Verification (added 2025-09-24)
+
+Run these checkpoints immediately after enabling the `/onlyoffice/` subpath but **before** disabling the legacy `onlyoffice.<domain>` vhost:
+
+1. **Document Server bound to loopback**
+   ```bash
+   sudo ss -ltnp | grep 127.0.0.1:8080
+   curl -fsSI http://127.0.0.1:8080/healthcheck | head -n1
+   curl -fsS  http://127.0.0.1:8080/hosting/discovery | head
+   ```
+
+2. **Nginx subpath proxy sanity**
+   ```bash
+   sudo nginx -t && sudo systemctl reload nginx
+   curl -fsSI https://docs.<domain>/onlyoffice/healthcheck | head -n1
+   curl -fsS  https://docs.<domain>/onlyoffice/hosting/discovery | head
+   curl -fsSI https://docs.<domain>/onlyoffice/web-apps/apps/api/documents/api.js | head -n5
+   ```
+
+3. **Connector configuration snapshot + update**
+   ```bash
+   sudo -u www-data php /var/www/nextcloud/occ config:app:get onlyoffice --output=json > /root/onlyoffice-occ-before.json
+   sudo -u www-data php /var/www/nextcloud/occ config:app:set onlyoffice DocumentServerUrl --value="https://docs.<domain>/onlyoffice/"
+   sudo -u www-data php /var/www/nextcloud/occ config:app:set onlyoffice DocumentServerInternalUrl --value="http://127.0.0.1:8080/"
+   sudo -u www-data php /var/www/nextcloud/occ config:app:set onlyoffice StorageUrl --value="https://docs.<domain>/"
+   sudo -u www-data php /var/www/nextcloud/occ config:app:set onlyoffice jwt_secret --value="${JWT_SECRET}"
+   sudo -u www-data php /var/www/nextcloud/occ config:app:set onlyoffice jwt_header --value="AuthorizationJwt"
+   sudo -u www-data php /var/www/nextcloud/occ onlyoffice:documentserver --check
+   ```
+
+4. **Browser verification**
+   - Force-refresh Files app (Shift+Reload)
+   - Create/Open `.docx`, `.xlsx`, `.pptx`
+   - Watch dev tools for 404 / mixed-content issues on `/onlyoffice/`
+
+5. **Rollback drill (keep handy)**
+   ```bash
+   sudo ln -s /etc/nginx/sites-available/onlyoffice.<domain> /etc/nginx/sites-enabled/
+   sudo nginx -t && sudo systemctl reload nginx
+   sudo -u www-data php /var/www/nextcloud/occ config:app:set onlyoffice DocumentServerUrl --value="https://onlyoffice.<domain>/"
+   sudo -u www-data php /var/www/nextcloud/occ onlyoffice:documentserver --check
+   ```
+
+Document all command output under `/var/log/nextcloud-diagnostics.log` using `./src/99_diagnostics.sh` once validation passes.
+
+### Execution record
+
+- **2025-09-24** — Checklist completed successfully on test VPS (`docs.test-collab-site.com`).
+  - `curl` probes over `/onlyoffice/` returned HTTP 200 for `healthcheck`, `hosting/discovery`, and `web-apps/apps/api/documents/api.js`.
+  - `occ onlyoffice:documentserver --check` reported "Document server … successfully connected".
+  - Browser validation ok for `.docx`, `.xlsx`, `.pptx`, `.pdf`, markdown, and image viewers.
+  - Legacy `onlyoffice` vhost disabled; cert renewal scheduled for retirement via `certbot delete --cert-name onlyoffice.<domain>`.

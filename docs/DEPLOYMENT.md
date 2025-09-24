@@ -172,9 +172,9 @@ sudo -u www-data php occ config:system:set overwrite.cli.url --value='https://yo
 ```
 **What it does:**
 - Installs OnlyOffice app in Nextcloud
-- Configures connection between Nextcloud and OnlyOffice
-- Updates nginx to proxy OnlyOffice requests
-- Tests integration
+- Configures single-domain integration (DocumentServerUrl = `https://yourdomain.com/onlyoffice/`)
+- Adds nginx `/onlyoffice/` reverse-proxy block targeting `127.0.0.1:8080`
+- Tests integration and confirms JWT secret alignment
 
 ## Post-Installation
 
@@ -213,6 +213,11 @@ sudo -u www-data php occ config:system:set trusted_domains 0 --value='yourdomain
 - Verify services: `systemctl status ds-docservice`
 - Check logs: `journalctl -u ds-docservice`
 - Test health: `curl http://localhost:8000/healthcheck`
+- Confirm URLs:
+  ```bash
+  sudo -u www-data php occ config:app:get onlyoffice DocumentServerUrl           # expect https://yourdomain.com/onlyoffice/
+  sudo -u www-data php occ config:app:get onlyoffice DocumentServerInternalUrl   # expect http://127.0.0.1:8080/
+  ```
 
 **4. PHP Module Missing**
 ```bash
