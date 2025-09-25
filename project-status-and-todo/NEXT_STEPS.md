@@ -14,6 +14,15 @@
 - ✅ Browser smoke tests for `.docx`, `.xlsx`, `.pptx`, `.pdf`, markdown, and image viewers
 - ✅ Legacy `onlyoffice.<domain>` nginx site disabled while keeping rollback symlink
 
+## Script Status and next steps at src/
+- Scripts with 'dual-domain' in the name are misnamed now that we have successfully changed to a single domain 
+- Scripts have been created/edited by different agents over a 6 week development process
+- Script numbering does not always reflect the correct order of execution. **This needs to be fixed**
+- Scripts have only partially been updated to reflect the current successful deployment at the test site.
+- You should evaluate all scripts for obvious bugs or out-of-date configurations, fix, and then tested
+- Determine the correct order that scripts should be run by the admin; consider if specific operations should be moved between scripts to enable sensible operations.  rename the scripts to match the new correct order of execution.  
+- Update documentation to show correct instructions for running the revised scripts
+
 ## Immediate Actions
 
 1. **Retire unused TLS certificate**

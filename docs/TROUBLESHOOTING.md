@@ -11,6 +11,27 @@ sudo ./src/99_diagnostics.sh
 
 This will identify most common issues automatically.
 
+### Common Issues
+1. **OnlyOffice not reachable**: Check service status, nginx proxy, internal connectivity
+2. **Document won't open**: Check JWT configuration, URL settings, file permissions
+3. **SSL certificate issues**: Use `certbot certificates` and `certbot renew`
+4. **Performance issues**: Check memory usage, restart services, optimize database
+
+### First Debugging Steps
+1. Run `sudo ./src/99_diagnostics.sh`
+2. Check service status: `systemctl status nginx php8.3-fpm mariadb postgresql redis-server onlyoffice-documentserver`
+3. Test OnlyOffice health: `curl http://127.0.0.1:8000/healthcheck`
+4. Check recent logs in `/var/log/` directories
+
+### Recovery Commands
+```bash
+# Emergency service restart
+sudo systemctl restart mariadb postgresql redis-server php8.3-fpm onlyoffice-documentserver nginx
+
+# Fix permissions
+sudo chown -R www-data:www-data /var/www/nextcloud /srv/nextcloud-data
+
+
 ## Installation Issues
 
 ### Installation Fails at System Preparation

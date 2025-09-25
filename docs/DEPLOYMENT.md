@@ -229,6 +229,39 @@ apt install php8.3-module-name
 systemctl restart php8.3-fpm
 ```
 
+
+### Service Management Helpful Commands
+```bash
+# Check all services status
+sudo systemctl status nginx mariadb postgresql redis-server php8.3-fpm onlyoffice-documentserver
+
+# Restart all services in correct order
+sudo systemctl restart mariadb postgresql redis-server
+sudo systemctl restart php8.3-fpm onlyoffice-documentserver
+sudo systemctl restart nginx
+
+# Test nginx configuration
+sudo nginx -t && sudo systemctl reload nginx
+
+# OnlyOffice health checks
+curl -sS http://127.0.0.1:8000/healthcheck  # Direct OnlyOffice
+curl -sS http://127.0.0.1:8080/healthcheck  # Via nginx proxy
+```
+
+#### NextCloud Management
+```bash
+# NextCloud CLI (from /var/www/nextcloud)
+sudo -u www-data php occ status
+sudo -u www-data php occ app:list | grep onlyoffice
+sudo -u www-data php occ config:app:get onlyoffice DocumentServerUrl
+sudo -u www-data php occ config:app:get onlyoffice DocumentServerInternalUrl
+
+# Database maintenance
+sudo -u www-data php occ db:add-missing-indices
+sudo -u www-data php occ db:convert-filecache-bigint
+```
+
+
 ### Log Files
 - **Installation**: `/var/log/nextcloud-install.log`
 - **Nginx**: `/var/log/nginx/error.log`
