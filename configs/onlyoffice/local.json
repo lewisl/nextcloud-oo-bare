@@ -1,0 +1,47 @@
+{
+  "services": {
+    "CoAuthoring": {
+      "server": { "ip": "127.0.0.1", "port": 8000 },
+      "sql": {
+        "type": "postgres",
+        "dbHost": "localhost",
+        "dbPort": "5432",
+        "dbName": "<ONLYOFFICE_DB_NAME>",
+        "dbUser": "<ONLYOFFICE_DB_USER>",
+        "dbPass": "<ONLYOFFICE_DB_PASSWORD>"
+      },
+      "token": {
+        "enable": {
+          "browser": true,
+          "request": { "inbox": true, "outbox": true }
+        },
+        "browser": { "secretFromInbox": false },
+        "inbox": { "header": "AuthorizationJwt", "prefix": "Bearer ", "inBody": false },
+        "outbox": {
+          "header": "AuthorizationJwt",
+          "prefix": "Bearer ",
+          "algorithm": "HS256",
+          "expires": "5m",
+          "inBody": false,
+          "urlExclusionRegex": ""
+        },
+        "session": { "algorithm": "HS256", "expires": "30d" },
+        "verifyOptions": { "clockTolerance": 60 }
+      },
+      "secret": {
+        "browser": { "string": "<JWT_SECRET>", "file": "" },
+        "inbox": { "string": "<JWT_SECRET>", "file": "" },
+        "outbox": { "string": "<JWT_SECRET>", "file": "" },
+        "session": { "string": "<JWT_SECRET>", "file": "" }
+      },
+      "request-filtering": {
+        "enable": true,
+        "allowPrivateIPAddress": true,
+        "allowLoopback": true,
+        "allowedHosts": ["docs.<domain>", "onlyoffice.<domain>", "127.0.0.1"]
+      }
+    }
+  },
+  "rabbitmq": { "url": "amqp://guest:guest@localhost" },
+  "wopi": { "enable": true }
+}

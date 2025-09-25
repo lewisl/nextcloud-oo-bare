@@ -1,0 +1,61 @@
+# Config Loader CLI verification (2025-09-25)
+
+## Command
+NC_OO_PARAMS_PATH=configs/params.yaml python3 src/lib/config_loader.py --dump
+
+## Output
+{
+  "deployment": {
+    "base_domain": "example.com",
+    "nextcloud_domain": "docs.example.com",
+    "onlyoffice_domain": "onlyoffice.example.com",
+    "admin_email": "admin@example.com",
+    "letsencrypt_email": "admin@example.com",
+    "nextcloud_admin_user": "admin",
+    "nextcloud_admin_password": "CHANGE_ME_TO_SECURE_VALUE"
+  },
+  "nextcloud_db": {
+    "name": "nextcloud",
+    "user": "ncuser",
+    "password": "CHANGE_ME_TO_SECURE_VALUE"
+  },
+  "onlyoffice_db": {
+    "name": "onlyoffice",
+    "user": "oouser",
+    "password": "CHANGE_ME_TO_SECURE_VALUE"
+  },
+  "jwt": {
+    "secret": "0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}
+
+## Command
+NC_OO_PARAMS_PATH=configs/params.yaml python3 src/lib/config_loader.py --env
+
+## Output
+export DEPLOYMENT_BASE_DOMAIN=example.com
+export NEXTCLOUD_FQDN=docs.example.com
+export ONLYOFFICE_FQDN=onlyoffice.example.com
+export ADMIN_EMAIL=admin@example.com
+export LETSENCRYPT_EMAIL=admin@example.com
+export NEXTCLOUD_ADMIN_USER=admin
+export NEXTCLOUD_ADMIN_PASSWORD=CHANGE_ME_TO_SECURE_VALUE
+export NEXTCLOUD_DB_NAME=nextcloud
+export NEXTCLOUD_DB_USER=ncuser
+export NEXTCLOUD_DB_PASSWORD=CHANGE_ME_TO_SECURE_VALUE
+export ONLYOFFICE_DB_NAME=onlyoffice
+export ONLYOFFICE_DB_USER=oouser
+export ONLYOFFICE_DB_PASSWORD=CHANGE_ME_TO_SECURE_VALUE
+export JWT_SECRET=0000000000000000000000000000000000000000000000000000000000000000
+
+## Command
+/tmp/demo.sh
+
+## Output
+Base domain: example.com
+Nextcloud FQDN: docs.example.com
+Let's Encrypt email: admin@example.com
+Nextcloud admin: admin / CHANGE_ME_TO_SECURE_VALUE
+Nextcloud DSN: mysql://ncuser:***@localhost/nextcloud
+OnlyOffice DSN: postgres://oouser:***@localhost/onlyoffice
+JWT length: 64
