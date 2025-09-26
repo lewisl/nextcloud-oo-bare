@@ -1,6 +1,9 @@
 {
   "services": {
     "CoAuthoring": {
+      "public": {
+        "url": "https://docs.<domain>/onlyoffice"
+      },
       "server": { "ip": "127.0.0.1", "port": 8000 },
       "sql": {
         "type": "postgres",
@@ -16,9 +19,9 @@
           "request": { "inbox": true, "outbox": true }
         },
         "browser": { "secretFromInbox": false },
-        "inbox": { "header": "AuthorizationJwt", "prefix": "Bearer ", "inBody": false },
+        "inbox": { "header": "Authorization", "prefix": "Bearer ", "inBody": false },
         "outbox": {
-          "header": "AuthorizationJwt",
+          "header": "Authorization",
           "prefix": "Bearer ",
           "algorithm": "HS256",
           "expires": "5m",
@@ -43,5 +46,11 @@
     }
   },
   "rabbitmq": { "url": "amqp://guest:guest@localhost" },
-  "wopi": { "enable": true }
+  "wopi": { "enable": true },
+  "FileConverter": {
+    "converter": {
+      "docbuilderPath": "/var/www/onlyoffice/documentserver/server/FileConverter/bin/docbuilder",
+      "x2tPath": "/var/www/onlyoffice/documentserver/server/FileConverter/bin/x2t"
+    }
+  }
 }

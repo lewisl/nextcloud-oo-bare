@@ -56,9 +56,11 @@ server {
         proxy_set_header   Host               $host;
         proxy_set_header   X-Real-IP          $remote_addr;
         proxy_set_header   X-Forwarded-For    $proxy_add_x_forwarded_for;
-        proxy_set_header   X-Forwarded-Proto  $scheme;
+        proxy_set_header   X-Forwarded-Proto  https;
         proxy_set_header   X-Forwarded-Host   $host;
+        proxy_set_header   X-Forwarded-Port   443;
         proxy_set_header   X-Forwarded-Prefix /onlyoffice;
+        proxy_set_header   Authorization      $http_authorization;
         proxy_set_header   Upgrade            $http_upgrade;
         proxy_set_header   Connection         $connection_upgrade;
         client_max_body_size 200m;
@@ -97,21 +99,23 @@ server {
         fastcgi_request_buffering off;
     }
 
-    location ~ ^/(?!index\.php/).*((?:css|js|woff2?|svg|gif|map))$ {
+    # Static assets (hashed bundles, modules, wasm)
+    location ~ ^/(?!index\.php/).*(?:css|js|mjs|wasm|woff2?|svg|gif|map)$ {
         try_files $uri /index.php$request_uri;
         expires 6M;
         add_header Cache-Control "public, max-age=15552000, immutable";
         access_log off;
     }
 
-    location ~ ^/(?!index\.php/).*((?:png|html|ttf|ico|jpg|jpeg))$ {
+    location ~ ^/(?!index\.php/).*(?:png|html|ttf|ico|jpg|jpeg|webp|avif)$ {
         try_files $uri /index.php$request_uri;
         expires 6M;
         add_header Cache-Control "public, max-age=15552000, immutable";
         access_log off;
     }
 
-    location ~ ^/apps/(?!.*/api/).*/?$ {
+    # Force app directories through front controller but allow direct asset hits
+    location ~ ^/apps/(?!.*/api/)(?!.*\.[^/]+$).*/?$ {
         rewrite ^(.*)$ /index.php$1 last;
     }
 

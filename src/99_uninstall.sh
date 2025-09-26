@@ -1,423 +1,217 @@
 #!/bin/bash
 
-# Nextcloud + OnlyOffice Complete Uninstall Script
-# 
-# This script removes everything installed by the installation scripts:
-# - Stops all services
-# - Removes packages
-# - Deletes directories and files
-# - Cleans up databases
-# - Removes configuration files
-# - Resets firewall rules
+# Safe uninstall helper for the single-domain Nextcloud + OnlyOffice deployment
+# Removes application data, configs, certificates, and databases that were created
+# by the automation scripts. Packages that shipped with the OS are left installed
+# unless --purge-packages is supplied.
 
 set -euo pipefail
 
-# Colors for output
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+CONFIG_LOADER="${SCRIPT_DIR}/lib/config_loader.py"
+PARAMS_FILE="/etc/nextcloud-onlyoffice/params.yaml"
+LOG_FILE="/var/log/nextcloud-install.log"
+DEFAULT_BACKUP_DIR="${PROJECT_ROOT}/project-status-and-todo/test-results"
+
+PURGE_PACKAGES=0
+SKIP_BACKUP=0
+ASSUME_YES=0
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Logging functions
-log() {
-    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')]${NC} $1"
+log()    { printf "${GREEN}[%s]${NC} %s\n" "$(date +'%Y-%m-%d %H:%M:%S')" "$1" | tee -a "$LOG_FILE"; }
+info()   { printf "${BLUE}[INFO]${NC} %s\n" "$1" | tee -a "$LOG_FILE"; }
+warning(){ printf "${YELLOW}[WARN]${NC} %s\n" "$1" | tee -a "$LOG_FILE"; }
+error()  { printf "${RED}[ERROR]${NC} %s\n" "$1" | tee -a "$LOG_FILE" >&2; }
+success(){ printf "${GREEN}[OK]${NC} %s\n" "$1" | tee -a "$LOG_FILE"; }
+
+usage() {
+    cat <<'USAGE'
+Usage: 99_uninstall.sh [options]
+
+Options:
+  --yes                 Skip interactive confirmation prompts
+  --skip-backup         Do not generate tarball backups before deletion
+  --backup-dir <path>   Directory to store backup tarballs (default: project test-results)
+  --purge-packages      Remove nginx, PHP-FPM, certbot, and onlyoffice packages after cleanup
+  -h, --help            Show this help message
+USAGE
 }
 
-error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+parse_args() {
+    BACKUP_DIR="$DEFAULT_BACKUP_DIR"
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --yes)
+                ASSUME_YES=1; shift ;;
+            --skip-backup)
+                SKIP_BACKUP=1; shift ;;
+            --backup-dir)
+                [[ $# -gt 1 ]] || { usage; exit 1; }
+                BACKUP_DIR="$(readlink -f "$2")"; shift 2 ;;
+            --purge-packages)
+                PURGE_PACKAGES=1; shift ;;
+            -h|--help)
+                usage; exit 0 ;;
+            *)
+                usage; exit 1 ;;
+        esac
+    done
 }
 
-warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
+ensure_root() { [[ $EUID -eq 0 ]] || { error "Run as root"; exit 1; }; }
 
-info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
-
-success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
-
-header() {
-    echo -e "${CYAN}${BOLD}$1${NC}"
-}
-
-# Check if running as root
-check_root() {
-    if [[ $EUID -ne 0 ]]; then
-        error "This script must be run as root (use sudo)"
+load_params() {
+    local exports
+    if ! exports=$(python3 "$CONFIG_LOADER" --env 2>/tmp/config_loader.err); then
+        cat /tmp/config_loader.err >&2 || true
+        error "Unable to load parameters"
         exit 1
     fi
+    eval "$exports"
+    rm -f /tmp/config_loader.err
+    : "${NEXTCLOUD_FQDN:?missing NEXTCLOUD_FQDN}"
+    : "${NEXTCLOUD_DB_NAME:?missing NEXTCLOUD_DB_NAME}"
+    : "${NEXTCLOUD_DB_USER:?missing NEXTCLOUD_DB_USER}"
+    : "${ONLYOFFICE_DB_NAME:?missing ONLYOFFICE_DB_NAME}"
+    : "${ONLYOFFICE_DB_USER:?missing ONLYOFFICE_DB_USER}"
 }
 
-# Display banner and confirmation
-show_banner() {
-    clear
-    echo -e "${RED}${BOLD}"
-    cat << 'EOF'
-╔══════════════════════════════════════════════════════════════════════════════╗
-║                    COMPLETE UNINSTALL - DANGER ZONE                         ║
-║                   This will remove EVERYTHING                               ║
-╚══════════════════════════════════════════════════════════════════════════════╝
-EOF
-    echo -e "${NC}"
-    echo ""
-    warning "This script will completely remove:"
-    warning "  • All Nextcloud files and data"
-    warning "  • All OnlyOffice components"
-    warning "  • All databases and data"
-    warning "  • All configuration files"
-    warning "  • All SSL certificates"
-    warning "  • All installed packages"
-    echo ""
-    error "THIS CANNOT BE UNDONE!"
-    echo ""
-    
-    read -p "Are you absolutely sure you want to continue? (type 'YES' to confirm): " confirm
-    if [[ "$confirm" != "YES" ]]; then
-        info "Uninstall cancelled"
-        exit 0
+confirm_destructive() {
+    if [[ "$ASSUME_YES" -eq 1 ]]; then
+        return
     fi
-    
-    echo ""
-    warning "Last chance to cancel..."
-    read -p "Type 'DELETE EVERYTHING' to proceed: " final_confirm
-    if [[ "$final_confirm" != "DELETE EVERYTHING" ]]; then
-        info "Uninstall cancelled"
-        exit 0
-    fi
+    printf "${YELLOW}This will permanently remove Nextcloud, OnlyOffice, databases, certificates, and nginx configs for %s.${NC}\n" "$NEXTCLOUD_FQDN"
+    read -p "Type the hostname ($NEXTCLOUD_FQDN) to continue: " reply
+    [[ "$reply" == "$NEXTCLOUD_FQDN" ]] || { info "Aborted"; exit 0; }
 }
 
-# Stop all services
 stop_services() {
-    header "Stopping All Services"
-    
-    local services=(
-        "nginx"
-        "php8.3-fpm"
-        "php-fpm"
-        "onlyoffice-documentserver"
-        "mariadb"
-        "mysql"
-        "postgresql"
-        "redis-server"
-        "fail2ban"
-    )
-    
-    for service in "${services[@]}"; do
-        if systemctl is-active --quiet "$service" 2>/dev/null; then
-            log "Stopping $service..."
-            systemctl stop "$service" || warning "Failed to stop $service"
-        fi
-        
-        if systemctl is-enabled --quiet "$service" 2>/dev/null; then
-            log "Disabling $service..."
-            systemctl disable "$service" || warning "Failed to disable $service"
+    info "Stopping related services"
+    local services=(nginx php8.3-fpm php-fpm ds-docservice ds-converter ds-metrics redis-server certbot.timer certbot.service)
+    for svc in "${services[@]}"; do
+        if systemctl list-unit-files | grep -q "^${svc}"; then
+            systemctl stop "$svc" 2>/dev/null || true
+            systemctl disable "$svc" 2>/dev/null || true
         fi
     done
-    
-    success "Services stopped"
+    success "Services stopped/disabled"
 }
 
-# Remove packages
-remove_packages() {
-    header "Removing Packages"
-    
-    # OnlyOffice packages
-    log "Removing OnlyOffice packages..."
-    apt remove --purge -y onlyoffice-documentserver* || true
-    
-    # Force remove OnlyOffice if stuck
-    rm -rf /var/lib/dpkg/info/onlyoffice* || true
-    dpkg --remove --force-remove-reinstreq onlyoffice-documentserver || true
-    
-    # Web server and PHP packages
-    log "Removing web server and PHP packages..."
-    apt remove --purge -y nginx nginx-* || true
-    apt remove --purge -y php* || true
-    
-    # Database packages
-    log "Removing database packages..."
-    apt remove --purge -y mariadb-server mariadb-client mariadb-common || true
-    apt remove --purge -y mysql-* || true
-    apt remove --purge -y postgresql postgresql-* || true
-    
-    # Other packages
-    log "Removing other packages..."
-    apt remove --purge -y redis-server || true
-    apt remove --purge -y fail2ban || true
-    apt remove --purge -y certbot python3-certbot-nginx || true
-    
-    # Clean up
-    apt autoremove -y || true
-    apt autoclean || true
-    
-    success "Packages removed"
-}
+clean_cron() {
+    info "Removing scheduled jobs referencing Nextcloud"
+    # Remove cron.d entry if present
+    rm -f /etc/cron.d/nextcloud 2>/dev/null || true
 
-# Remove directories and files
-remove_directories() {
-    header "Removing Directories and Files"
-    
-    # Helper function to forcefully remove directory
-    force_remove_dir() {
-        local dir="$1"
-        if [[ -d "$dir" ]]; then
-            log "Removing $dir..."
-            # First try normal removal
-            if ! rm -rf "$dir" 2>/dev/null; then
-                # If that fails, try to unmount if it's a mount point
-                if mountpoint -q "$dir" 2>/dev/null; then
-                    warning "$dir is a mount point, unmounting..."
-                    umount -f "$dir" 2>/dev/null || true
-                fi
-                # Try again with more force
-                rm -rf "$dir" 2>/dev/null || {
-                    # Last resort: remove contents then directory
-                    find "$dir" -type f -delete 2>/dev/null || true
-                    find "$dir" -type l -delete 2>/dev/null || true
-                    find "$dir" -type d -empty -delete 2>/dev/null || true
-                    rmdir "$dir" 2>/dev/null || warning "Could not fully remove $dir"
-                }
+    # Scrub root crontab of cron.php references
+    if crontab -l >/tmp/root_cron.old 2>/dev/null; then
+        if grep -q 'nextcloud/cron.php' /tmp/root_cron.old; then
+            grep -v 'nextcloud/cron.php' /tmp/root_cron.old > /tmp/root_cron.new || true
+            if [[ -s /tmp/root_cron.new ]]; then
+                crontab /tmp/root_cron.new
+            else
+                crontab -r
             fi
+            info "Removed cron.php entry from root crontab"
         fi
-    }
-    
-    # Nextcloud directories
-    log "Removing Nextcloud directories..."
-    force_remove_dir "/var/www/nextcloud"
-    force_remove_dir "/srv/nextcloud-data"
-    force_remove_dir "/var/www/html"
-    
-    # OnlyOffice directories
-    log "Removing OnlyOffice directories..."
-    force_remove_dir "/etc/onlyoffice"
-    force_remove_dir "/var/lib/onlyoffice"
-    force_remove_dir "/var/log/onlyoffice"
-    force_remove_dir "/usr/bin/onlyoffice"
-    
-    # Configuration directories
-    log "Removing configuration directories..."
-    force_remove_dir "/etc/nextcloud-onlyoffice"
-    force_remove_dir "/etc/nginx"
-    force_remove_dir "/etc/php"
-    force_remove_dir "/etc/mysql"
-    force_remove_dir "/etc/postgresql"
-    force_remove_dir "/etc/redis"
-    force_remove_dir "/etc/fail2ban"
-    
-    # Data directories
-    log "Removing data directories..."
-    force_remove_dir "/var/lib/mysql"
-    force_remove_dir "/var/lib/postgresql"
-    force_remove_dir "/var/lib/redis"
-    force_remove_dir "/var/lib/nginx"
-    
-    # Log directories
-    log "Removing log directories..."
-    force_remove_dir "/var/log/nginx"
-    for phplog in /var/log/php*; do
-        force_remove_dir "$phplog"
+        rm -f /tmp/root_cron.old /tmp/root_cron.new
+    fi
+
+    success "Cron cleanup complete"
+}
+
+backup_assets() {
+    [[ "$SKIP_BACKUP" -eq 1 ]] && { info "Skipping backups"; return; }
+    mkdir -p "$BACKUP_DIR"
+    local ts
+    ts=$(date +%F_%H%M%S)
+    local items=("/etc/nginx" "/var/www/nextcloud" "/etc/onlyoffice" "/etc/letsencrypt" "/var/lib/onlyoffice")
+    for item in "${items[@]}"; do
+        if [[ -e "$item" ]]; then
+            local safe
+            safe=$(echo "$item" | sed 's#^/##; s#[^a-zA-Z0-9_\-]#_#g')
+            local archive="${BACKUP_DIR}/${safe}_backup_${ts}.tar.gz"
+            info "Backing up $item -> $archive"
+            tar -czf "$archive" -C "$(dirname "$item")" "$(basename "$item")" || warning "Failed to create $archive"
+        fi
     done
-    force_remove_dir "/var/log/mysql"
-    force_remove_dir "/var/log/postgresql"
-    force_remove_dir "/var/log/redis"
-    force_remove_dir "/var/log/fail2ban"
-    for nclog in /var/log/nextcloud*; do
-        force_remove_dir "$nclog"
-    done
-    
+    success "Backups (if any) created under $BACKUP_DIR"
+}
+
+remove_nginx_configs() {
+    info "Removing nginx vhost"
+    local site="/etc/nginx/sites-available/${NEXTCLOUD_FQDN}.conf"
+    rm -f "$site" "/etc/nginx/sites-enabled/${NEXTCLOUD_FQDN}" "/etc/nginx/sites-enabled/${NEXTCLOUD_FQDN}.conf"
+    nginx -t && systemctl reload nginx || warning "nginx reload returned non-zero"
+}
+
+remove_files() {
+    info "Removing application directories"
+    rm -rf /var/www/nextcloud /srv/nextcloud-data /var/www/html || true
+    rm -rf /var/www/onlyoffice /var/lib/onlyoffice /var/log/onlyoffice /etc/onlyoffice || true
+    rm -rf /etc/nextcloud-onlyoffice || true
+    rm -rf "/etc/letsencrypt/live/${NEXTCLOUD_FQDN}" "/etc/letsencrypt/archive/${NEXTCLOUD_FQDN}" "/etc/letsencrypt/renewal/${NEXTCLOUD_FQDN}.conf" || true
     success "Directories removed"
 }
 
-# Remove SSL certificates
-remove_ssl() {
-    header "Removing SSL Certificates"
-    
-    log "Removing Let's Encrypt certificates..."
-    rm -rf /etc/letsencrypt || true
-    rm -rf /var/lib/letsencrypt || true
-    rm -rf /var/log/letsencrypt || true
-    
-    log "Removing SSL certificates..."
-    rm -rf /etc/ssl/certs/dhparam.pem || true
-    
-    success "SSL certificates removed"
+remove_databases() {
+    info "Dropping MariaDB (Nextcloud) database/user"
+    mysql -uroot <<SQL || warning "MariaDB cleanup encountered issues"
+DROP DATABASE IF EXISTS \`${NEXTCLOUD_DB_NAME}\`;
+DROP USER IF EXISTS '${NEXTCLOUD_DB_USER}'@'localhost';
+FLUSH PRIVILEGES;
+SQL
+
+    info "Dropping PostgreSQL (OnlyOffice) database/user"
+    sudo -u postgres psql <<SQL || warning "PostgreSQL cleanup encountered issues"
+SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='${ONLYOFFICE_DB_NAME}';
+DROP DATABASE IF EXISTS "${ONLYOFFICE_DB_NAME}";
+DROP ROLE IF EXISTS "${ONLYOFFICE_DB_USER}";
+SQL
+    success "Databases removed"
 }
 
-# Clean up users and groups
-cleanup_users() {
-    header "Cleaning Up Users and Groups"
-    
-    # Remove users (be careful not to remove system users)
-    local users_to_check=(
-        "www-data"
-        "nginx"
-        "mysql"
-        "postgres"
-        "redis"
-    )
-    
-    for user in "${users_to_check[@]}"; do
-        if id "$user" &>/dev/null; then
-            log "User $user exists (keeping system user)"
-        fi
-    done
-    
-    success "User cleanup completed"
+purge_packages() {
+    [[ "$PURGE_PACKAGES" -eq 1 ]] || { info "Package purge skipped"; return; }
+    info "Purging application packages"
+    DEBIAN_FRONTEND=noninteractive apt-get remove --purge -y onlyoffice-documentserver nginx nginx-* php8.3-* php-fpm redis-server certbot python3-certbot-nginx || true
+    DEBIAN_FRONTEND=noninteractive apt-get autoremove -y || true
+    DEBIAN_FRONTEND=noninteractive apt-get autoclean || true
+    success "Package purge completed"
 }
 
-# Reset firewall
-reset_firewall() {
-    header "Resetting Firewall"
-    
-    log "Resetting UFW firewall..."
-    ufw --force reset || true
-    ufw default deny incoming || true
-    ufw default allow outgoing || true
-    ufw allow ssh || true
-    ufw --force enable || true
-    
-    success "Firewall reset to defaults"
+summarise() {
+    success "Uninstall completed"
+    printf "${CYAN}${BOLD}Reminder:${NC} review ${BACKUP_DIR} for tarball backups if you wish to restore configs.\n"
 }
 
-# Remove installation artifacts
-remove_artifacts() {
-    header "Removing Installation Artifacts"
-    
-    log "Removing installation files..."
-    rm -rf /root/nextcloud-* || true
-    rm -rf /root/onlyoffice-* || true
-    rm -rf /root/database-* || true
-    rm -rf /root/nginx-* || true
-    rm -rf /root/ssl-* || true
-    rm -rf /root/integration-* || true
-    rm -rf /root/install-* || true
-    rm -rf /root/.my.cnf || true
-    
-    # Remove state files
-    rm -rf /root/nextcloud-install-state.txt || true
-    
-    # Remove log files
-    rm -rf /var/log/nextcloud-install.log || true
-    rm -rf /var/log/nextcloud-diagnostics.log || true
-    
-    success "Installation artifacts removed"
-}
-
-# Remove repositories
-remove_repositories() {
-    header "Removing Package Repositories"
-    
-    log "Removing OnlyOffice repository..."
-    rm -rf /etc/apt/sources.list.d/onlyoffice.list || true
-    rm -rf /usr/share/keyrings/onlyoffice.gpg || true
-    
-    log "Removing other repositories..."
-    # Add any other custom repositories here
-    
-    # Update package lists
-    apt update || true
-    
-    success "Repositories removed"
-}
-
-# Final cleanup
-final_cleanup() {
-    header "Final Cleanup"
-    
-    log "Cleaning package cache..."
-    apt clean || true
-    apt autoclean || true
-    apt autoremove --purge -y || true
-    
-    log "Cleaning temporary files..."
-    rm -rf /tmp/nextcloud* || true
-    rm -rf /tmp/onlyoffice* || true
-    
-    log "Cleaning systemd..."
-    systemctl daemon-reload || true
-    systemctl reset-failed || true
-    
-    success "Final cleanup completed"
-}
-
-# Verify removal
-verify_removal() {
-    header "Verifying Removal"
-    
-    local issues=0
-    
-    # Check for remaining services
-    local services=(
-        "nginx"
-        "php8.3-fpm"
-        "onlyoffice-documentserver"
-        "mariadb"
-        "postgresql"
-        "redis-server"
-    )
-    
-    for service in "${services[@]}"; do
-        if systemctl list-unit-files | grep -q "^$service"; then
-            warning "Service $service still exists"
-            ((issues++))
-        fi
-    done
-    
-    # Check for remaining directories
-    local directories=(
-        "/var/www/nextcloud"
-        "/srv/nextcloud-data"
-        "/etc/onlyoffice"
-        "/var/lib/onlyoffice"
-    )
-    
-    for dir in "${directories[@]}"; do
-        if [[ -d "$dir" ]]; then
-            warning "Directory $dir still exists"
-            ((issues++))
-        fi
-    done
-    
-    if [[ $issues -eq 0 ]]; then
-        success "Verification passed - all components removed"
-    else
-        warning "$issues issues found - manual cleanup may be needed"
-    fi
-}
-
-# Main execution
 main() {
-    check_root
-    show_banner
-    
-    log "Starting complete uninstall..."
-    
+    ensure_root
+    touch "$LOG_FILE"
+    chmod 640 "$LOG_FILE"
+    parse_args "$@"
+    if [[ ! -f "$PARAMS_FILE" ]]; then
+        info "No deployment metadata at $PARAMS_FILE; assuming stack already removed."
+        info "If this is unexpected, rerun 01_system_prep.sh to regenerate parameters."
+        exit 0
+    fi
+    load_params
+    confirm_destructive
     stop_services
-    remove_packages
-    remove_directories
-    remove_ssl
-    cleanup_users
-    reset_firewall
-    remove_artifacts
-    remove_repositories
-    final_cleanup
-    verify_removal
-    
-    header "Uninstall Complete"
-    success "All Nextcloud + OnlyOffice components have been removed"
-    echo ""
-    info "Your system has been restored to its previous state"
-    info "Only SSH access and basic firewall rules remain"
-    echo ""
-    warning "If you had any custom configurations, they have been removed"
-    warning "Make sure to reconfigure any services you need"
+    clean_cron
+    backup_assets
+    remove_nginx_configs
+    remove_files
+    remove_databases
+    purge_packages
+    summarise
 }
 
-# Run main function
 main "$@"

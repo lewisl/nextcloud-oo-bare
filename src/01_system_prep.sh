@@ -162,6 +162,7 @@ install_packages() {
         php8.3-curl
         php8.3-imagick
         php8.3-redis
+        php8.3-apcu
         postgresql
         postgresql-contrib
         redis-server

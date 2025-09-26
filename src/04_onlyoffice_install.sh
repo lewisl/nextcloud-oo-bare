@@ -19,6 +19,9 @@ LOCAL_JSON="/etc/onlyoffice/documentserver/local.json"
 PRODUCTION_JSON="/etc/onlyoffice/documentserver/production-linux.json"
 DS_CONF="/etc/onlyoffice/documentserver/nginx/ds.conf"
 DS_SERVICES=(ds-converter ds-docservice ds-metrics)
+LOCAL_JSON_TEMPLATE="${PROJECT_ROOT}/configs/onlyoffice/local.json"
+DS_CONF_TEMPLATE="${PROJECT_ROOT}/configs/onlyoffice/nginx/ds.conf.tpl"
+POSTGRES_SCHEMA_DIR="/var/www/onlyoffice/documentserver/server/schema/postgresql"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -71,6 +74,52 @@ load_params() {
     rm -f /tmp/config_loader.err
 }
 
+prepare_documentserver_prereqs() {
+    info "Pre-seeding DocumentServer config directories"
+    local base="/etc/onlyoffice/documentserver"
+    local logrotate_dir="$base/logrotate"
+    local includes_dir="$base/nginx/includes"
+    local logrotate_src="${PROJECT_ROOT}/configs/onlyoffice/logrotate/ds.conf"
+    local includes_src="${PROJECT_ROOT}/configs/onlyoffice/nginx/includes"
+    local log_root="/var/log/onlyoffice/documentserver"
+    local app_data_root="/var/lib/onlyoffice/documentserver"
+    local log4js_src="${PROJECT_ROOT}/configs/onlyoffice/log4js"
+
+    mkdir -p "$logrotate_dir" "$includes_dir"
+
+    if [[ -f "$logrotate_src" ]]; then
+        install -m 00644 -o root -g root "$logrotate_src" "$logrotate_dir/ds.conf"
+    elif [[ ! -f "$logrotate_dir/ds.conf" ]]; then
+        touch "$logrotate_dir/ds.conf"
+        chmod 644 "$logrotate_dir/ds.conf"
+        chown root:root "$logrotate_dir/ds.conf"
+    fi
+
+    if [[ -d "$includes_src" ]]; then
+        while IFS= read -r -d '' file; do
+            install -m 00644 -o root -g root "$file" "$includes_dir/$(basename "$file")"
+        done < <(find "$includes_src" -maxdepth 1 -type f -name '*.conf' -print0)
+    fi
+
+    # Remove upstream example include that breaks nginx reloads in non-default deployments
+    rm -f "$includes_dir/ds-example.conf" /etc/nginx/includes/ds-example.conf
+
+    chmod 755 "$base" "$base/nginx" "$includes_dir" "$logrotate_dir" 2>/dev/null || true
+
+    mkdir -p "$log_root/docservice" "$log_root/converter" "$log_root/metrics"
+    chown -R ds:ds "$log_root"
+
+    mkdir -p "$app_data_root/App_Data" "$app_data_root/App_Data/cache/files" "$app_data_root/docbuilder"
+    chown -R ds:ds "$app_data_root"
+
+    if [[ -d "$log4js_src" ]]; then
+        mkdir -p "$base/log4js"
+        while IFS= read -r -d '' file; do
+            install -m 00644 -o root -g root "$file" "$base/log4js/$(basename "$file")"
+        done < <(find "$log4js_src" -maxdepth 1 -type f -name '*.json' -print0)
+    fi
+}
+
 ensure_packages() {
     info "Ensuring apt dependencies for OnlyOffice"
     DEBIAN_FRONTEND=noninteractive apt-get update -y >>"$LOG_FILE" 2>&1
@@ -90,7 +139,19 @@ configure_repository() {
 
 install_documentserver() {
     info "Installing onlyoffice-documentserver package"
-    DEBIAN_FRONTEND=noninteractive apt-get install -y onlyoffice-documentserver >>"$LOG_FILE" 2>&1
+    export UCF_FORCE_CONFFOLD=1
+    export UCF_FORCE_CONFFNEW=0
+    local apt_opts=(
+        "-o" "Dpkg::Options::=--force-confold"
+        "-o" "Dpkg::Options::=--force-confdef"
+    )
+    if ! DEBIAN_FRONTEND=noninteractive apt-get install "${apt_opts[@]}" -y onlyoffice-documentserver >>"$LOG_FILE" 2>&1; then
+        warning "Package install reported an error, attempting to repair configuration"
+        prepare_documentserver_prereqs
+        if ! DEBIAN_FRONTEND=noninteractive dpkg --force-confdef --force-confold --configure -a >>"$LOG_FILE" 2>&1; then
+            abort "dpkg --configure -a failed; check $LOG_FILE for details"
+        fi
+    fi
     for svc in "${DS_SERVICES[@]}"; do
         systemctl enable "$svc" >>"$LOG_FILE" 2>&1 || warning "Service $svc unavailable to enable"
     done
@@ -98,69 +159,15 @@ install_documentserver() {
 
 configure_local_json() {
     info "Configuring DocumentServer local.json"
-    LOCAL_JSON_PATH="$LOCAL_JSON" python3 <<'PY'
-from __future__ import annotations
-import json
-import os
-from pathlib import Path
-
-env = os.environ
-local_path = Path(env["LOCAL_JSON_PATH"])
-local_path.parent.mkdir(parents=True, exist_ok=True)
-
-try:
-    data = json.loads(local_path.read_text())
-except Exception:
-    data = {}
-
-services = data.setdefault("services", {})
-co = services.setdefault("CoAuthoring", {})
-
-co["server"] = {"ip": "127.0.0.1", "port": 8000}
-co["sql"] = {
-    "type": "postgres",
-    "dbHost": "localhost",
-    "dbPort": "5432",
-    "dbName": env["ONLYOFFICE_DB_NAME"],
-    "dbUser": env["ONLYOFFICE_DB_USER"],
-    "dbPass": env["ONLYOFFICE_DB_PASSWORD"],
-}
-
-token = co.setdefault("token", {})
-token["enable"] = {"browser": True, "request": {"inbox": True, "outbox": True}}
-token["browser"] = {"secretFromInbox": False}
-token["inbox"] = {"header": "AuthorizationJwt", "prefix": "Bearer ", "inBody": False}
-token["outbox"] = {
-    "header": "AuthorizationJwt",
-    "prefix": "Bearer ",
-    "algorithm": "HS256",
-    "expires": "5m",
-    "inBody": False,
-    "urlExclusionRegex": "",
-}
-token["session"] = {"algorithm": "HS256", "expires": "30d"}
-token["verifyOptions"] = {"clockTolerance": 60}
-co["secret"] = {
-    "browser": {"string": env["JWT_SECRET"], "file": ""},
-    "inbox": {"string": env["JWT_SECRET"], "file": ""},
-    "outbox": {"string": env["JWT_SECRET"], "file": ""},
-    "session": {"string": env["JWT_SECRET"], "file": ""},
-}
-
-rf = co.setdefault("request-filtering", {})
-allowed = {h for h in rf.get("allowedHosts", []) if h}
-allowed.update({env["NEXTCLOUD_FQDN"], env.get("ONLYOFFICE_FQDN", ""), "127.0.0.1"})
-allowed = {h for h in allowed if h}
-rf["enable"] = True
-rf["allowPrivateIPAddress"] = True
-rf["allowLoopback"] = True
-rf["allowedHosts"] = sorted(allowed)
-
-data.setdefault("rabbitmq", {})["url"] = "amqp://guest:guest@localhost"
-data.setdefault("wopi", {})["enable"] = True
-
-local_path.write_text(json.dumps(data, indent=2) + "\n")
-PY
+    python3 -m src.lib.configure_onlyoffice render-local-json \
+        --template "$LOCAL_JSON_TEMPLATE" \
+        --output "$LOCAL_JSON" \
+        --nextcloud-fqdn "$NEXTCLOUD_FQDN" \
+        --onlyoffice-fqdn "${ONLYOFFICE_FQDN:-}" \
+        --jwt-secret "$JWT_SECRET" \
+        --db-name "$ONLYOFFICE_DB_NAME" \
+        --db-user "$ONLYOFFICE_DB_USER" \
+        --db-password "$ONLYOFFICE_DB_PASSWORD"
     chown ds:ds "$LOCAL_JSON"
     chmod 600 "$LOCAL_JSON"
 }
@@ -172,12 +179,50 @@ configure_production_json() {
 
 configure_ds_conf() {
     info "Ensuring DocumentServer nginx listens on 127.0.0.1:8080"
-    if [[ -f "$DS_CONF" ]]; then
-        if ! grep -q "listen 127.0.0.1:8080" "$DS_CONF"; then
-            sed -i 's/^\s*listen [^;]*;/  listen 127.0.0.1:8080;/' "$DS_CONF"
-        fi
-    else
-        warning "ds.conf not found; skipping nginx binding update"
+    local ds_dir="$(dirname "$DS_CONF")"
+    local includes_dir="$ds_dir/includes"
+    local includes_src="${PROJECT_ROOT}/configs/onlyoffice/nginx/includes"
+    local logrotate_dir="/etc/onlyoffice/documentserver/logrotate"
+    local logrotate_src="${PROJECT_ROOT}/configs/onlyoffice/logrotate/ds.conf"
+    mkdir -p "$ds_dir"
+
+    if [[ -d "$includes_src" ]]; then
+        mkdir -p "$includes_dir"
+        cp -f "$includes_src"/*.conf "$includes_dir" 2>/dev/null || true
+        chown root:root "$includes_dir"/*.conf 2>/dev/null || true
+        chmod 644 "$includes_dir"/*.conf 2>/dev/null || true
+    fi
+
+    if [[ -f "$logrotate_src" ]]; then
+        mkdir -p "$logrotate_dir"
+        cp -f "$logrotate_src" "$logrotate_dir/ds.conf"
+        chown root:root "$logrotate_dir/ds.conf"
+        chmod 644 "$logrotate_dir/ds.conf"
+    fi
+
+    python3 -m src.lib.configure_onlyoffice render-ds-conf \
+        --template "$DS_CONF_TEMPLATE" \
+        --output "$DS_CONF" \
+        --existing "$DS_CONF"
+
+    chown root:root "$DS_CONF"
+    chmod 644 "$DS_CONF"
+
+    if [[ ! -L /etc/nginx/conf.d/ds.conf || "$(readlink -f /etc/nginx/conf.d/ds.conf 2>/dev/null)" != "$DS_CONF" ]]; then
+        ln -sf "$DS_CONF" /etc/nginx/conf.d/ds.conf
+    fi
+}
+
+initialize_database() {
+    if [[ ! -d "$POSTGRES_SCHEMA_DIR" ]]; then
+        warning "PostgreSQL schema directory not found at $POSTGRES_SCHEMA_DIR; skipping schema initialization"
+        return
+    fi
+
+    info "Ensuring OnlyOffice database schema"
+    PGPASSWORD="$ONLYOFFICE_DB_PASSWORD" psql -h localhost -U "$ONLYOFFICE_DB_USER" -d "$ONLYOFFICE_DB_NAME" -f "$POSTGRES_SCHEMA_DIR/removetbl.sql" >>"$LOG_FILE" 2>&1 || true
+    if ! PGPASSWORD="$ONLYOFFICE_DB_PASSWORD" psql -h localhost -U "$ONLYOFFICE_DB_USER" -d "$ONLYOFFICE_DB_NAME" -f "$POSTGRES_SCHEMA_DIR/createdb.sql" >>"$LOG_FILE" 2>&1; then
+        abort "Failed to initialize OnlyOffice database schema"
     fi
 }
 
@@ -192,14 +237,15 @@ restart_documentserver() {
 healthcheck() {
     info "Running DocumentServer health checks"
     local attempt=0
-    until curl -fsS http://127.0.0.1:8080/healthcheck >/dev/null 2>&1; do
+    local max_attempts=15
+    until curl -fsS --max-time 10 http://127.0.0.1:8080/healthcheck >/dev/null 2>&1; do
         ((attempt++))
-        if (( attempt > 10 )); then
-            abort "DocumentServer healthcheck failed after 10 attempts"
+        if (( attempt >= max_attempts )); then
+            abort "DocumentServer healthcheck failed after ${max_attempts} attempts"
         fi
         sleep 2
     done
-    curl -fsS http://127.0.0.1:8080/hosting/discovery >/dev/null 2>&1 || warning "Hosting discovery returned non-200 response"
+    curl -fsS --max-time 30 http://127.0.0.1:8080/hosting/discovery >/dev/null 2>&1 || warning "Hosting discovery returned non-200 response"
 }
 
 summarise() {
@@ -219,12 +265,14 @@ main() {
     chmod 640 "$LOG_FILE"
     ensure_params_file
     load_params
+    prepare_documentserver_prereqs
     ensure_packages
     configure_repository
     install_documentserver
     configure_local_json
     configure_production_json
     configure_ds_conf
+    initialize_database
     restart_documentserver
     healthcheck
     summarise

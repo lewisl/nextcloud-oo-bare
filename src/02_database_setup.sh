@@ -100,7 +100,11 @@ setup_postgresql() {
         sudo -u postgres psql -c "CREATE ROLE \"$ONLYOFFICE_DB_USER\" LOGIN PASSWORD '$password_escaped';" >>"$LOG_FILE" 2>&1
     fi
 
+    sudo -u postgres psql -c "ALTER DATABASE \"$ONLYOFFICE_DB_NAME\" OWNER TO \"$ONLYOFFICE_DB_USER\";" >>"$LOG_FILE" 2>&1 || true
     sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE \"$ONLYOFFICE_DB_NAME\" TO \"$ONLYOFFICE_DB_USER\";" >>"$LOG_FILE" 2>&1
+    sudo -u postgres psql -d "$ONLYOFFICE_DB_NAME" -c "ALTER SCHEMA public OWNER TO \"$ONLYOFFICE_DB_USER\";" >>"$LOG_FILE" 2>&1 || true
+    sudo -u postgres psql -d "$ONLYOFFICE_DB_NAME" -c "GRANT ALL PRIVILEGES ON SCHEMA public TO \"$ONLYOFFICE_DB_USER\";" >>"$LOG_FILE" 2>&1 || true
+    sudo -u postgres psql -d "$ONLYOFFICE_DB_NAME" -c "ALTER DEFAULT PRIVILEGES FOR ROLE \"$ONLYOFFICE_DB_USER\" IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO \"$ONLYOFFICE_DB_USER\";" >>"$LOG_FILE" 2>&1 || true
 
     info "Testing PostgreSQL connectivity as $ONLYOFFICE_DB_USER"
     if ! PGPASSWORD="$ONLYOFFICE_DB_PASSWORD" psql -h localhost -U "$ONLYOFFICE_DB_USER" -d "$ONLYOFFICE_DB_NAME" -c "SELECT 1;" >>"$LOG_FILE" 2>&1; then

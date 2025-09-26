@@ -123,7 +123,7 @@ These checklists keep testing incremental. After each script is refactored, run 
 
 **Steps**
 1. Run `sudo ./tests/run_with_guard.sh ./src/05_nginx_config.sh`.
-2. Check `nginx -t` output within the guard run for errors.
+2. Execute `sudo ./tests/nginx_smoke.sh` (uses loopback `--resolve` to avoid Cloudflare caching).
 3. Verify site file: `sudo ls -l /etc/nginx/sites-available/${NEXTCLOUD_DOMAIN}.conf`.
 4. Confirm symlink: `readlink /etc/nginx/sites-enabled/${NEXTCLOUD_DOMAIN}.conf`.
 5. Confirm websocket snippet deployed: `sudo cat /etc/nginx/conf.d/00_websocket_upgrade_map.conf`.
@@ -132,8 +132,8 @@ These checklists keep testing incremental. After each script is refactored, run 
 **Diagnostics & Pass Criteria**
 - `nginx -t` → `syntax is ok` and `test is successful`.
 - `systemctl status nginx` → `active (running)`.
-- `curl -sk https://docs.<domain>/status.php` (or `curl -sk --resolve docs.<domain>:443:127.0.0.1 https://docs.<domain>/status.php`) → JSON with `"installed":true`.
-- `curl -sk https://docs.<domain>/onlyoffice/healthcheck` (or loopback equivalent if HTTPS disabled) → `true`.
+- `sudo ./tests/nginx_smoke.sh` terminates with exit code 0.
+- `curl -sk --resolve docs.<domain>:443:127.0.0.1 https://docs.<domain>/status.php` → JSON with `"installed":true`.
 - `sudo python3 - <<'PY'` check to ensure `/etc/nginx/sites-available/${NEXTCLOUD_DOMAIN}.conf` contains `proxy_pass http://127.0.0.1:8080/`.
 
 **Rollback/Recovery**
@@ -142,21 +142,77 @@ These checklists keep testing incremental. After each script is refactored, run 
 
 ---
 
-## 06_ssl_setup.sh (pending refactor)
-*Draft until script updated.*
-- Use staging certs first (`--dry-run`), confirm renewal timer, document certificate paths.
+## 06_ssl_setup.sh
+**Preconditions**
+- Scripts 01–05 completed; nginx serving HTTP for challenge.
+- DNS for `docs.<domain>` resolves to the server (proxy/CDN accommodates HTTP challenge).
+
+**Steps**
+1. Run `sudo ./src/06_ssl_setup.sh --staging` to exercise issuance logic without consuming production rate limits.
+2. Verify certificates: `sudo certbot certificates --cert-name docs.<domain>`.
+3. Confirm renewal timer: `systemctl status certbot.timer`.
+4. Re-run production issuance (omit `--staging`) once staging passes.
+5. Execute `sudo ./tests/nginx_smoke.sh` to ensure HTTPS vhost now serves with the certificate and static assets still resolve.
+6. Record outputs in `test-results/ssl_setup_<date>.txt`.
+
+**Diagnostics & Pass Criteria**
+- `sudo certbot certificates --cert-name docs.<domain>` → lists `Certificate Name`, `Domains`, and `Expiry` (staging cert shows fake CA until real run).
+- `sudo openssl x509 -in /etc/letsencrypt/live/docs.<domain>/cert.pem -noout -issuer` → issuer matches either “(STAGING) Artificial Apricot R3” or Let’s Encrypt production CA.
+- `systemctl is-enabled certbot.timer` → `enabled` and `systemctl status certbot.timer` shows `Active: active (running)` with next trigger.
+- `sudo ./tests/nginx_smoke.sh` returns exit code 0, confirming `/onlyoffice/healthcheck` and `.mjs` assets work over HTTPS.
+
+**Rollback/Recovery**
+- Remove staging files with `sudo rm -rf /etc/letsencrypt/live/docs.<domain>-0001` (or relevant) if staging issuance leaves duplicates.
+- Disable certbot timer (`systemctl disable --now certbot.timer`) if issuance failed and you need to retry later.
+- Restore nginx config from Git if re-rendering introduced syntax errors, then rerun script after fixing the issue.
 
 ---
 
-## 07_integration_config.sh (pending refactor)
-*Draft until script updated.*
-- Run OCC OnlyOffice commands, verify JWT secret matches Document Server, curl `/onlyoffice/hosting/discovery`, and log outcome.
+## 07_integration_config.sh
+**Preconditions**
+- Scripts 01–06 completed; Document Server and nginx are healthy.
+- `tests/nginx_smoke.sh` passes.
+
+**Steps**
+1. Run `sudo ./src/07_integration_config.sh`.
+2. Observe occ output for connector settings and health check.
+3. If warnings appear, inspect `/var/log/nextcloud-install.log` and `/var/log/nginx/nextcloud_error.log`.
+4. Save command output to `test-results/integration_config_<date>.txt`.
+
+**Diagnostics & Pass Criteria**
+- `sudo -u www-data php /var/www/nextcloud/occ config:app:get onlyoffice DocumentServerUrl` → `https://docs.<domain>/onlyoffice/`.
+- `sudo -u www-data php /var/www/nextcloud/occ config:app:get onlyoffice DocumentServerInternalUrl` → `http://127.0.0.1:8080/`.
+- `sudo -u www-data php /var/www/nextcloud/occ config:app:get onlyoffice jwt_header` → `Authorization`.
+- `sudo -u www-data php /var/www/nextcloud/occ onlyoffice:documentserver --check` → returns “Document server … successfully connected”.
+- `sudo ./tests/nginx_smoke.sh` exit code 0 (already triggered by the script, but rerun if troubleshooting).
+
+**Rollback/Recovery**
+- Re-run `src/04_onlyoffice_install.sh` if JWT secrets drifted or DocumentServer lost its public URL config.
+- Restore Nextcloud config from backup (`config/config.php` and OnlyOffice app settings) if occ values were overwritten incorrectly, then rerun this script.
+- Consult DocumentServer logs (`/var/log/onlyoffice/documentserver/`) if health checks fail.
 
 ---
 
-## 99_uninstall.sh (planned rework)
-*Add plan after script is hardened.*
-- Will cover service stop, package removal safety, and post-check to ensure system ready for reinstall.
+## 99_uninstall.sh
+**Preconditions**
+- You have a safe snapshot/backup; this script deletes databases, certs, and application files.
+- `params.yaml` still reflects the deployment you want to remove.
+
+**Steps**
+1. Optional: create manual backups or specify a custom backup directory (`--backup-dir /path`).
+2. Run `sudo ./src/99_uninstall.sh` (add `--yes` for non-interactive, `--skip-backup` if you already saved artifacts, `--purge-packages` to remove nginx/php/onlyoffice packages).
+3. After completion, inspect `/var/log/nextcloud-install.log` for any warnings noted during cleanup.
+
+**Diagnostics & Pass Criteria**
+- `/var/www/nextcloud`, `/var/www/onlyoffice`, `/etc/onlyoffice`, `/etc/letsencrypt/live/docs.<domain>` are removed.
+- `mysql -uroot -e "SHOW DATABASES"` no longer lists the Nextcloud DB; `sudo -u postgres psql -c '\l'` no longer lists the OnlyOffice DB.
+- `ls /etc/nginx/sites-available` no longer contains `docs.<domain>.conf`; `nginx -t` still succeeds.
+- If `--purge-packages` was used, `dpkg -l | grep onlyoffice-documentserver` returns nothing.
+- `sudo crontab -l` (if any) has no entries containing `nextcloud/cron.php`; `/etc/cron.d/nextcloud` removed.
+
+**Rollback/Recovery**
+- Restore from the generated tarballs in the backup directory (nginx, onlyoffice, letsencrypt) if needed.
+- Reinstall via scripts 01–07 to rebuild the stack.
 
 ---
 

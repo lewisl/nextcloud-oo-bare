@@ -37,9 +37,10 @@
    - Investigate OnlyOffice conversion error (JWT headers, docservice logs, service restart) until `occ onlyoffice:documentserver --check` passes again.
    - Confirm Cloudflare/cache isn’t serving stale JS (Development Mode, hard refresh). If issues persist, capture browser console/network errors.
 
-3. **Plan execution order**
+3. **Plan execution order / rebuild checklist**
    - Re-evaluate script sequencing (nginx vs. SSL vs. integration) before touching scripts 06–07.
    - Document the intended run order and prerequisites in `docs/DEPLOYMENT.md` prior to additional refactors.
+   - Before the next test cycle, follow `docs/REBUILD_TEST_SERVER.md` to rebuild the Hetzner host, recreate `/srv/collab`, and reclone the repo so we start from a clean slate.
 
 4. **Documentation backlog**
    - Once regressions are cleared, update `docs/DEPLOYMENT.md`, `QUICK_START.md`, and `TROUBLESHOOTING.md` for the new flow.

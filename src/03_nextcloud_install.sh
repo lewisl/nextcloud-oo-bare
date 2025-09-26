@@ -15,9 +15,15 @@ PARAMS_FILE="${SYSTEM_CONFIG_DIR}/params.yaml"
 LOG_FILE="/var/log/nextcloud-install.log"
 NEXTCLOUD_ROOT="/var/www/nextcloud"
 NEXTCLOUD_DATA="/srv/nextcloud-data"
-NEXTCLOUD_VERSION="28.0.4"
-NEXTCLOUD_ARCHIVE="nextcloud-${NEXTCLOUD_VERSION}.tar.bz2"
-DOWNLOAD_URL="https://download.nextcloud.com/server/releases/${NEXTCLOUD_ARCHIVE}"
+DEFAULT_NEXTCLOUD_VERSION="31.0.9"
+NEXTCLOUD_VERSION="${NEXTCLOUD_VERSION:-$DEFAULT_NEXTCLOUD_VERSION}"
+if [[ "$NEXTCLOUD_VERSION" == "latest" ]]; then
+    NEXTCLOUD_ARCHIVE="nextcloud-latest.tar.bz2"
+    DOWNLOAD_URL="https://download.nextcloud.com/server/releases/latest.tar.bz2"
+else
+    NEXTCLOUD_ARCHIVE="nextcloud-${NEXTCLOUD_VERSION}.tar.bz2"
+    DOWNLOAD_URL="https://download.nextcloud.com/server/releases/${NEXTCLOUD_ARCHIVE}"
+fi
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -89,7 +95,13 @@ download_nextcloud() {
         return
     fi
 
-    info "Fetching Nextcloud ${NEXTCLOUD_VERSION}"
+    local human_version="$NEXTCLOUD_VERSION"
+    if [[ "$NEXTCLOUD_VERSION" == "latest" ]]; then
+        human_version="latest stable (determined by download.nextcloud.com)"
+    fi
+
+    info "Fetching Nextcloud release ${human_version}"
+    info "Override by exporting NEXTCLOUD_VERSION or editing configs/params.yaml guidance"
     local tmp_dir
     tmp_dir=$(mktemp -d /tmp/nextcloud-download.XXXXXX)
     pushd "$tmp_dir" >/dev/null
@@ -139,14 +151,22 @@ apply_base_config() {
 }
 
 summarise() {
+    local deployed_version="unknown"
+    if [[ -f "$NEXTCLOUD_ROOT/version.php" ]]; then
+        deployed_version=$(php8.3 -r "include '$NEXTCLOUD_ROOT/version.php'; echo isset(\$OC_VersionString) ? \$OC_VersionString : '';" 2>/dev/null || true)
+        [[ -z "$deployed_version" ]] && deployed_version="unknown"
+    fi
+
     success "Nextcloud installation script completed"
     printf "${CYAN}${BOLD}Admin credentials${NC}:\n"
     printf "  • Username: %s\n" "$NEXTCLOUD_ADMIN_USER"
     printf "  • Password: %s\n" "$NEXTCLOUD_ADMIN_PASSWORD"
     printf "${CYAN}${BOLD}Database${NC}:\n"
     printf "  • DSN: mysql://%s:***@localhost/%s\n" "$NEXTCLOUD_DB_USER" "$NEXTCLOUD_DB_NAME"
+    printf "${CYAN}${BOLD}Nextcloud release${NC}: %s (requested: %s)\n" "$deployed_version" "$NEXTCLOUD_VERSION"
     printf "${CYAN}${BOLD}Next steps${NC}:\n"
     printf "  1. Run ./04_onlyoffice_install.sh once refactored\n"
+    warning "Verify https://nextcloud.com/changelog/ for newer stable releases before production rollout."
 }
 
 main() {

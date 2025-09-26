@@ -1,18 +1,24 @@
+# Template for deployment parameters.
+# Copy to /etc/nextcloud-onlyoffice/params.yaml and replace every CHANGE_ME placeholder.
+
 deployment:
-  base_domain: example.com
-  nextcloud_domain: docs.example.com
-  onlyoffice_domain: onlyoffice.example.com
-  admin_email: admin@example.com
-  letsencrypt_email: admin@example.com
+  base_domain: CHANGE_ME_BASE_DOMAIN
+  nextcloud_domain: docs.CHANGE_ME_BASE_DOMAIN
+  onlyoffice_domain: onlyoffice.CHANGE_ME_BASE_DOMAIN
+  admin_email: admin@CHANGE_ME_BASE_DOMAIN
+  letsencrypt_email: admin@CHANGE_ME_BASE_DOMAIN
   nextcloud_admin_user: admin
   nextcloud_admin_password: CHANGE_ME_TO_SECURE_VALUE
+
 nextcloud:
   db_name: nextcloud
   db_user: ncuser
   db_password: CHANGE_ME_TO_SECURE_VALUE
+
 onlyoffice:
   db_name: onlyoffice
   db_user: oouser
   db_password: CHANGE_ME_TO_SECURE_VALUE
+
 jwt:
-  secret: "0000000000000000000000000000000000000000000000000000000000000000"
+  secret: CHANGE_ME_TO_SECURE_VALUE

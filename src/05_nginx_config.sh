@@ -153,6 +153,38 @@ ensure_log_dir() {
     mkdir -p /var/log/nginx
 }
 
+ensure_mjs_mime_type() {
+    local mime_file="/etc/nginx/mime.types"
+    if [[ ! -f "$mime_file" ]]; then
+        warning "nginx mime.types missing; skipping mjs mapping"
+        return
+    fi
+    if grep -Eq '^\s*text/javascript\s+mjs;' "$mime_file"; then
+        return
+    fi
+    info "Adding text/javascript mjs mapping to nginx mime types"
+    local backup="${mime_file}.bak.$(date +%F_%H%M%S)"
+    cp "$mime_file" "$backup"
+    python3 - "$mime_file" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+content = path.read_text()
+entry = "    text/javascript                          mjs;\n"
+if re.search(r'^\s*text/javascript\s+mjs;', content, re.MULTILINE):
+    sys.exit(0)
+idx = content.rfind('}')
+if idx == -1:
+    new_content = content.rstrip() + "\n" + entry
+else:
+    new_content = content[:idx] + entry + content[idx:]
+path.write_text(new_content)
+PY
+    info "mjs MIME type added (backup saved to $backup)"
+}
+
 reload_nginx() {
     info "Testing nginx configuration"
     nginx -t
@@ -176,6 +208,7 @@ main() {
     detect_php_socket
     get_onlyoffice_port
     ensure_log_dir
+    ensure_mjs_mime_type
     render_main_conf
     install_websocket_snippet
     render_site_config
