@@ -1,18 +1,22 @@
 # Next Steps – Nextcloud + OnlyOffice Toolkit
 
-**Date:** September 24, 2025  
-**Current Status:** One-domain deployment validated on test VPS (docs.test-collab-site.com)  
+**Date:** September 25, 2025  
+**Current Status:** Script refactors 01–05 landed; regressions observed (Nextcloud dashboard/preview apps blank, OnlyOffice conversion error)  
 **Architecture:** amd64 Hetzner VPS, Nextcloud + OnlyOffice on single host, `/onlyoffice/` subpath proxy
 
 ---
 
 ## What’s Working
 
-- ✅ Nextcloud served at `https://docs.<domain>` with full app functionality
-- ✅ OnlyOffice Document Server reachable via subpath (`/onlyoffice/`) and loopback (`127.0.0.1:8080`)
-- ✅ JWT secret synchronized between Nextcloud and Document Server (`occ onlyoffice:documentserver --check` passes)
-- ✅ Browser smoke tests for `.docx`, `.xlsx`, `.pptx`, `.pdf`, markdown, and image viewers
-- ✅ Legacy `onlyoffice.<domain>` nginx site disabled while keeping rollback symlink
+- ✅ Guard harness (`tests/run_with_guard.sh`) protects live traffic during script runs
+- ✅ Scripts 01–05 refactored to consume `configs/params.yaml`, with templates stored under `configs/`
+- ✅ Known-good nginx vhost preserved and currently active on the test VPS
+
+## Currently Broken / Needs Attention
+
+- ❌ Nextcloud internal apps (dashboard, viewer, text, photos) return blank views after login
+- ❌ `occ onlyoffice:documentserver --check` reports “Conversion error”; DocumentServer logs show JWT permission warnings
+- ❌ Cloudflare/browser cache still suspected of serving stale assets despite initial purges
 
 ## Script Status and next steps at src/
 - Scripts with 'dual-domain' in the name are misnamed now that we have successfully changed to a single domain 
@@ -25,29 +29,26 @@
 
 ## Immediate Actions
 
-1. **Retire unused TLS certificate**
-   - Run `certbot delete --cert-name onlyoffice.test-collab-site.com` (or equivalent) to stop renewal attempts.
-   - Remove any cron/systemd renewal hooks specific to the old hostname.
+1. **Lock in repo state**
+   - Commit/push script refactors + configs now (pre-req before any snapshot rollback).
 
-2. **Update documentation** *(in progress)*
-   - ✅ `CURRENT_BEST_CONFIGURATIONS.md` updated.
-   - ✅ `Systematic testing.md` updated with execution record.
-   - ☐ Refresh `docs/DEPLOYMENT.md`, `QUICK_START.md`, and `TROUBLESHOOTING.md` to reference one-domain flow.
+2. **Restore functionality before further refactors**
+   - Diff active nginx vhost against templates and update `src/05_nginx_config.sh` to render the proven configuration.
+   - Investigate OnlyOffice conversion error (JWT headers, docservice logs, service restart) until `occ onlyoffice:documentserver --check` passes again.
+   - Confirm Cloudflare/cache isn’t serving stale JS (Development Mode, hard refresh). If issues persist, capture browser console/network errors.
 
-3. **Automation alignment**
-   - Extract the validated manual steps into `src/05_nginx_config_dual_domain.sh` and `src/07_integration_config_dual_domain.sh` (rename to reflect single-domain mode).
-   - Ensure scripts deploy `/etc/nginx/conf.d/00_websocket_upgrade_map.conf` and disable the legacy vhost if present.
-   - Add OCC commands to enforce the new URLs and JWT header consistently.
+3. **Plan execution order**
+   - Re-evaluate script sequencing (nginx vs. SSL vs. integration) before touching scripts 06–07.
+   - Document the intended run order and prerequisites in `docs/DEPLOYMENT.md` prior to additional refactors.
 
-4. **Testing cadence**
-   - Re-run `./src/00_test_runner.sh` once scripts are updated to confirm idempotency.
-   - Add a targeted smoke-test script for `/onlyoffice/` subpath (curl + occ + browser checklist reference).
+4. **Documentation backlog**
+   - Once regressions are cleared, update `docs/DEPLOYMENT.md`, `QUICK_START.md`, and `TROUBLESHOOTING.md` for the new flow.
 
 ## Open Questions / Decisions
 
 - Whether to remove `onlyoffice.<domain>` DNS record immediately or keep as dormant fallback.
 - Confirm Cloudflare SSL/TLS settings still align with single-origin approach (Full/Strict, proxy on).
-- Determine plan for production cutover (bedfordfallsbbbl.org) once automation is updated and retested.
+- Determine plan for production cutover (bedfordfallsbbbl.org) once automation is stable again.
 
 ## Deferred / Nice-to-have
 
