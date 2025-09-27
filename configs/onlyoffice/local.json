@@ -4,7 +4,10 @@
       "public": {
         "url": "https://docs.<domain>/onlyoffice"
       },
-      "server": { "ip": "127.0.0.1", "port": 8000 },
+      "server": {
+        "ip": "127.0.0.1",
+        "port": 8000
+      },
       "sql": {
         "type": "postgres",
         "dbHost": "localhost",
@@ -16,10 +19,19 @@
       "token": {
         "enable": {
           "browser": true,
-          "request": { "inbox": true, "outbox": true }
+          "request": {
+            "inbox": true,
+            "outbox": true
+          }
         },
-        "browser": { "secretFromInbox": false },
-        "inbox": { "header": "Authorization", "prefix": "Bearer ", "inBody": false },
+        "browser": {
+          "secretFromInbox": false
+        },
+        "inbox": {
+          "header": "Authorization",
+          "prefix": "Bearer ",
+          "inBody": false
+        },
         "outbox": {
           "header": "Authorization",
           "prefix": "Bearer ",
@@ -28,29 +40,59 @@
           "inBody": false,
           "urlExclusionRegex": ""
         },
-        "session": { "algorithm": "HS256", "expires": "30d" },
-        "verifyOptions": { "clockTolerance": 60 }
+        "session": {
+          "algorithm": "HS256",
+          "expires": "30d"
+        },
+        "verifyOptions": {
+          "clockTolerance": 60
+        }
       },
       "secret": {
-        "browser": { "string": "<JWT_SECRET>", "file": "" },
-        "inbox": { "string": "<JWT_SECRET>", "file": "" },
-        "outbox": { "string": "<JWT_SECRET>", "file": "" },
-        "session": { "string": "<JWT_SECRET>", "file": "" }
+        "browser": {
+          "string": "<JWT_SECRET>",
+          "file": ""
+        },
+        "inbox": {
+          "string": "<JWT_SECRET>",
+          "file": ""
+        },
+        "outbox": {
+          "string": "<JWT_SECRET>",
+          "file": ""
+        },
+        "session": {
+          "string": "<JWT_SECRET>",
+          "file": ""
+        }
       },
       "request-filtering": {
         "enable": true,
         "allowPrivateIPAddress": true,
         "allowLoopback": true,
-        "allowedHosts": ["docs.<domain>", "onlyoffice.<domain>", "127.0.0.1"]
+        "allowedHosts": [
+          "docs.<domain>",
+          "onlyoffice.<domain>",
+          "127.0.0.1"
+        ]
       }
     }
   },
-  "rabbitmq": { "url": "amqp://guest:guest@localhost" },
-  "wopi": { "enable": true },
+  "rabbitmq": {
+    "url": "amqp://guest:guest@localhost"
+  },
+  "wopi": {
+    "enable": true
+  },
   "FileConverter": {
     "converter": {
       "docbuilderPath": "/var/www/onlyoffice/documentserver/server/FileConverter/bin/docbuilder",
       "x2tPath": "/var/www/onlyoffice/documentserver/server/FileConverter/bin/x2t"
+    }
+  },
+  "storage": {
+    "fs": {
+      "secretString": "<SECURE_LINK_SECRET>"
     }
   }
 }

@@ -27,6 +27,7 @@ def render_local_json(
     db_name: str,
     db_user: str,
     db_password: str,
+    secure_link_secret: Optional[str] = None,
 ) -> None:
     data = _load_json(template)
 
@@ -98,6 +99,10 @@ def render_local_json(
     converter_cfg["docbuilderPath"] = "/var/www/onlyoffice/documentserver/server/FileConverter/bin/docbuilder"
     converter_cfg["x2tPath"] = "/var/www/onlyoffice/documentserver/server/FileConverter/bin/x2t"
 
+    if secure_link_secret:
+        storage_cfg = data.setdefault("storage", {}).setdefault("fs", {})
+        storage_cfg["secretString"] = secure_link_secret
+
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(data, indent=2) + "\n")
 
@@ -130,6 +135,7 @@ def main() -> None:
     local_parser.add_argument("--db-name", required=True)
     local_parser.add_argument("--db-user", required=True)
     local_parser.add_argument("--db-password", required=True)
+    local_parser.add_argument("--secure-link-secret", default="")
 
     ds_parser = subparsers.add_parser("render-ds-conf", help="Render DocumentServer nginx ds.conf")
     ds_parser.add_argument("--template", type=Path, required=True)
@@ -148,13 +154,15 @@ def main() -> None:
             db_name=args.db_name,
             db_user=args.db_user,
             db_password=args.db_password,
+            secure_link_secret=args.secure_link_secret or None,
         )
     elif args.command == "render-ds-conf":
-        render_ds_conf(
+        secret = render_ds_conf(
             template=args.template,
             output=args.output,
             existing=getattr(args, "existing", None),
         )
+        print(secret, end="")
 
 
 if __name__ == "__main__":  # pragma: no cover

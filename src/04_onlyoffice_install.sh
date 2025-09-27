@@ -20,6 +20,7 @@ DS_CONF="/etc/onlyoffice/documentserver/nginx/ds.conf"
 DS_SERVICES=(ds-converter ds-docservice ds-metrics)
 LOCAL_JSON_TEMPLATE="${PROJECT_ROOT}/configs/onlyoffice/local.json"
 DS_CONF_TEMPLATE="${PROJECT_ROOT}/configs/onlyoffice/nginx/ds.conf.tpl"
+SECURE_LINK_SECRET=""
 POSTGRES_SCHEMA_DIR="/var/www/onlyoffice/documentserver/server/schema/postgresql"
 APT_OPTS=(-o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::ftp::Timeout=30)
 
@@ -194,6 +195,7 @@ install_documentserver() {
 }
 
 configure_local_json() {
+    local secure_link="${1:-}"
     info "Configuring DocumentServer local.json"
     python3 -m src.lib.configure_onlyoffice render-local-json \
         --template "$LOCAL_JSON_TEMPLATE" \
@@ -203,7 +205,8 @@ configure_local_json() {
         --jwt-secret "$JWT_SECRET" \
         --db-name "$ONLYOFFICE_DB_NAME" \
         --db-user "$ONLYOFFICE_DB_USER" \
-        --db-password "$ONLYOFFICE_DB_PASSWORD"
+        --db-password "$ONLYOFFICE_DB_PASSWORD" \
+        --secure-link-secret "$secure_link"
     chown ds:ds "$LOCAL_JSON"
     chmod 600 "$LOCAL_JSON"
 }
@@ -231,10 +234,19 @@ configure_ds_conf() {
         chmod 644 "$logrotate_dir/ds.conf"
     fi
 
-    python3 -m src.lib.configure_onlyoffice render-ds-conf \
+    local rendered_secret
+    if ! rendered_secret=$(python3 -m src.lib.configure_onlyoffice render-ds-conf \
         --template "$DS_CONF_TEMPLATE" \
         --output "$DS_CONF" \
-        --existing "$DS_CONF"
+        --existing "$DS_CONF"); then
+        abort "Failed to render ds.conf"
+    fi
+    if [[ -z "$rendered_secret" && -f "$DS_CONF" ]]; then
+        rendered_secret=$(grep -Po '\$secure_link_secret\s+\K\w+' "$DS_CONF" || true)
+    fi
+    if [[ -n "$rendered_secret" ]]; then
+        SECURE_LINK_SECRET="$rendered_secret"
+    fi
 
     chown root:root "$DS_CONF"
     chmod 644 "$DS_CONF"
@@ -302,8 +314,8 @@ main() {
     configure_repository
     preseed_debconf
     install_documentserver
-    configure_local_json
     configure_ds_conf
+    configure_local_json "$SECURE_LINK_SECRET"
     initialize_database
     restart_documentserver
     healthcheck

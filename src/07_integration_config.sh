@@ -164,7 +164,7 @@ configure_connector() {
     occ config:app:set onlyoffice jwt_header --value="Authorization" >>"$LOG_FILE" 2>&1
     occ config:app:set onlyoffice jwt_enabled --value="true" >>"$LOG_FILE" 2>&1
     occ config:app:set onlyoffice verify_peer_off --value="false" >>"$LOG_FILE" 2>&1
-    occ config:app:set onlyoffice sameTab --value="false" >/dev/null 2>&1 || true
+    occ config:app:set onlyoffice sameTab --value="true" >>"$LOG_FILE" 2>&1 || true
 }
 
 sync_core_config() {

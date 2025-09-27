@@ -26,6 +26,7 @@ See `configs/onlyoffice/local.json` for the managed template (the installer rend
 - Request filtering allows traffic from `docs.<domain>`, `onlyoffice.<domain>`, and loopback.
 - RabbitMQ URL defaults to `amqp://guest:guest@localhost`; WOPI support stays enabled.
 - FileConverter uses explicit binary paths for `x2t` and `docbuilder` to avoid spawn errors on Ubuntu 24.04 (`FileConverter.converter.{x2tPath,docbuilderPath}`).
+- Storage signed-link protection now inherits the same secure link secret that nginx embeds in `/etc/onlyoffice/documentserver/nginx/ds.conf`; the installer keeps `storage.fs.secretString` in sync automatically to prevent 403 errors during connector self-checks.
 
 **Status (validated 2025-09-26):** ✅ DocumentServer stays behind nginx reverse proxy; healthchecks pass at `http://127.0.0.1:8080/healthcheck` and conversion succeeds after restart of `ds-converter.service`.
 
@@ -47,6 +48,7 @@ See `configs/onlyoffice/local.json` for the managed template (the installer rend
 - JWT Secret: `<JWT_SECRET>` (matches params.yaml)
 - JWT Header: `Authorization`
 - JWT Enabled: `true`
+- sameTab: `true` (keeps editing within the Nextcloud browser tab so the close control behaves correctly)
 
 **Status:** ✅ One-domain subpath mode active; OCC commands above are idempotent for reruns.
 
