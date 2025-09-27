@@ -125,16 +125,19 @@ load_params() {
     eval "$exports"
 }
 
+APT_OPTS=(-o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::ftp::Timeout=30)
+
 update_system() {
     info "Updating package index"
-    apt-get update -y >>"$LOG_FILE" 2>&1
+    apt-get "${APT_OPTS[@]}" update -y >>"$LOG_FILE" 2>&1
     info "Ensuring base system packages are current"
-    DEBIAN_FRONTEND=noninteractive apt-get upgrade -y >>"$LOG_FILE" 2>&1
+    DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTS[@]}" upgrade -y >>"$LOG_FILE" 2>&1
 }
 
 install_packages() {
     info "Installing base packages"
     local packages=(
+        bzip2
         apt-transport-https
         ca-certificates
         curl
@@ -165,13 +168,14 @@ install_packages() {
         php8.3-apcu
         postgresql
         postgresql-contrib
+        rabbitmq-server
         redis-server
         software-properties-common
         unzip
         vim
     )
-    DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}" >>"$LOG_FILE" 2>&1
-    systemctl enable --now nginx php8.3-fpm mariadb postgresql redis-server fail2ban >>"$LOG_FILE" 2>&1
+    DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTS[@]}" install -y "${packages[@]}" >>"$LOG_FILE" 2>&1
+    systemctl enable --now nginx php8.3-fpm mariadb postgresql redis-server rabbitmq-server fail2ban >>"$LOG_FILE" 2>&1
 }
 
 configure_firewall() {

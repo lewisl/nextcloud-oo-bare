@@ -207,6 +207,7 @@ connector_healthcheck() {
     else
         warning "Connector check reported issues"
         cat /tmp/onlyoffice_check.log | tee -a "$LOG_FILE"
+        warning "If you're using a staging certificate or a proxy that rewrites TLS (e.g. Cloudflare), the self-check may fail until a production cert is in place."
     fi
 }
 

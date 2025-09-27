@@ -15,6 +15,7 @@ PARAMS_FILE="${SYSTEM_CONFIG_DIR}/params.yaml"
 LOG_FILE="/var/log/nextcloud-install.log"
 WEBROOT="/var/www/nextcloud"
 CERTBOT_BIN="/usr/bin/certbot"
+APT_OPTS=(-o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::ftp::Timeout=30)
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -111,8 +112,8 @@ parse_args() {
 
 ensure_packages() {
     info "Ensuring certbot dependencies"
-    DEBIAN_FRONTEND=noninteractive apt-get update -y >>"$LOG_FILE" 2>&1
-    DEBIAN_FRONTEND=noninteractive apt-get install -y certbot python3-certbot-nginx >>"$LOG_FILE" 2>&1
+    DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTS[@]}" update -y >>"$LOG_FILE" 2>&1
+    DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTS[@]}" install -y certbot python3-certbot-nginx >>"$LOG_FILE" 2>&1
 }
 
 certificate_exists() {

@@ -79,6 +79,7 @@ load_params() {
 verify_prereqs() {
     command -v wget >/dev/null || abort "wget is required"
     command -v tar >/dev/null || abort "tar is required"
+    command -v bzip2 >/dev/null || abort "bzip2 is required; run 01_system_prep.sh first."
     systemctl is-active --quiet mariadb || warning "MariaDB not running; occ install may fail"
 }
 

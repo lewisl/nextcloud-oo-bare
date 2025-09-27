@@ -16,12 +16,12 @@ LOG_FILE="/var/log/nextcloud-install.log"
 APT_LIST="/etc/apt/sources.list.d/onlyoffice.list"
 KEYRING="/usr/share/keyrings/onlyoffice.gpg"
 LOCAL_JSON="/etc/onlyoffice/documentserver/local.json"
-PRODUCTION_JSON="/etc/onlyoffice/documentserver/production-linux.json"
 DS_CONF="/etc/onlyoffice/documentserver/nginx/ds.conf"
 DS_SERVICES=(ds-converter ds-docservice ds-metrics)
 LOCAL_JSON_TEMPLATE="${PROJECT_ROOT}/configs/onlyoffice/local.json"
 DS_CONF_TEMPLATE="${PROJECT_ROOT}/configs/onlyoffice/nginx/ds.conf.tpl"
 POSTGRES_SCHEMA_DIR="/var/www/onlyoffice/documentserver/server/schema/postgresql"
+APT_OPTS=(-o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::ftp::Timeout=30)
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -74,6 +74,42 @@ load_params() {
     rm -f /tmp/config_loader.err
 }
 
+ensure_ds_account() {
+    info "Ensuring ds system account exists"
+    if ! getent group ds >/dev/null 2>&1; then
+        if command -v addgroup >/dev/null 2>&1; then
+            addgroup --system ds >>"$LOG_FILE" 2>&1
+        else
+            groupadd --system ds >>"$LOG_FILE" 2>&1 || true
+        fi
+    fi
+    if ! id -u ds >/dev/null 2>&1; then
+        local home="/var/lib/onlyoffice/documentserver"
+        mkdir -p "$home"
+        if command -v adduser >/dev/null 2>&1; then
+            adduser --system --home "$home" --shell /usr/sbin/nologin --ingroup ds ds >>"$LOG_FILE" 2>&1
+        else
+            useradd --system --home-dir "$home" --shell /usr/sbin/nologin --gid ds ds >>"$LOG_FILE" 2>&1
+        fi
+    fi
+}
+
+preseed_debconf() {
+    info "Preseeding DocumentServer installation answers"
+    local rabbitmq_pass="guest"
+    cat <<EOF | debconf-set-selections
+onlyoffice-documentserver onlyoffice/db-type select postgres
+onlyoffice-documentserver onlyoffice/db-host string localhost
+onlyoffice-documentserver onlyoffice/db-port string 5432
+onlyoffice-documentserver onlyoffice/db-name string ${ONLYOFFICE_DB_NAME}
+onlyoffice-documentserver onlyoffice/db-user string ${ONLYOFFICE_DB_USER}
+onlyoffice-documentserver onlyoffice/db-pwd password ${ONLYOFFICE_DB_PASSWORD}
+onlyoffice-documentserver onlyoffice/rabbitmq-host string localhost
+onlyoffice-documentserver onlyoffice/rabbitmq-user string guest
+onlyoffice-documentserver onlyoffice/rabbitmq-pwd password ${rabbitmq_pass}
+EOF
+}
+
 prepare_documentserver_prereqs() {
     info "Pre-seeding DocumentServer config directories"
     local base="/etc/onlyoffice/documentserver"
@@ -122,8 +158,8 @@ prepare_documentserver_prereqs() {
 
 ensure_packages() {
     info "Ensuring apt dependencies for OnlyOffice"
-    DEBIAN_FRONTEND=noninteractive apt-get update -y >>"$LOG_FILE" 2>&1
-    DEBIAN_FRONTEND=noninteractive apt-get install -y curl gnupg ca-certificates apt-transport-https >>"$LOG_FILE" 2>&1
+    DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTS[@]}" update -y >>"$LOG_FILE" 2>&1
+    DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTS[@]}" install -y curl gnupg ca-certificates apt-transport-https >>"$LOG_FILE" 2>&1
 }
 
 configure_repository() {
@@ -134,7 +170,7 @@ configure_repository() {
     if [[ ! -f "$APT_LIST" ]]; then
         echo "deb [signed-by=$KEYRING] https://download.onlyoffice.com/repo/debian squeeze main" > "$APT_LIST"
     fi
-    DEBIAN_FRONTEND=noninteractive apt-get update -y >>"$LOG_FILE" 2>&1
+    DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTS[@]}" update -y >>"$LOG_FILE" 2>&1
 }
 
 install_documentserver() {
@@ -145,7 +181,7 @@ install_documentserver() {
         "-o" "Dpkg::Options::=--force-confold"
         "-o" "Dpkg::Options::=--force-confdef"
     )
-    if ! DEBIAN_FRONTEND=noninteractive apt-get install "${apt_opts[@]}" -y onlyoffice-documentserver >>"$LOG_FILE" 2>&1; then
+    if ! DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTS[@]}" install "${apt_opts[@]}" -y onlyoffice-documentserver >>"$LOG_FILE" 2>&1; then
         warning "Package install reported an error, attempting to repair configuration"
         prepare_documentserver_prereqs
         if ! DEBIAN_FRONTEND=noninteractive dpkg --force-confdef --force-confold --configure -a >>"$LOG_FILE" 2>&1; then
@@ -170,11 +206,6 @@ configure_local_json() {
         --db-password "$ONLYOFFICE_DB_PASSWORD"
     chown ds:ds "$LOCAL_JSON"
     chmod 600 "$LOCAL_JSON"
-}
-
-configure_production_json() {
-    info "Configuring DocumentServer production-linux.json"
-    install -m 00644 -o ds -g ds "${PROJECT_ROOT}/configs/onlyoffice/production-linux.json" "$PRODUCTION_JSON"
 }
 
 configure_ds_conf() {
@@ -265,12 +296,13 @@ main() {
     chmod 640 "$LOG_FILE"
     ensure_params_file
     load_params
+    ensure_ds_account
     prepare_documentserver_prereqs
     ensure_packages
     configure_repository
+    preseed_debconf
     install_documentserver
     configure_local_json
-    configure_production_json
     configure_ds_conf
     initialize_database
     restart_documentserver

@@ -3,6 +3,7 @@ server {
     listen [::]:80;
     server_name ${NEXTCLOUD_FQDN};
 
+    # Allow Let's Encrypt challenge without redirect loops
     location ^~ /.well-known/acme-challenge/ {
         root /var/www/nextcloud;
         default_type "text/plain";
@@ -45,6 +46,8 @@ server {
     location = /.well-known/caldav  { return 301 /remote.php/dav; }
     location = /.well-known/webfinger { return 301 /index.php/.well-known/webfinger; }
     location = /.well-known/nodeinfo  { return 301 /index.php/.well-known/nodeinfo; }
+    location = /.well-known/host-meta { return 301 /public.php?service=host-meta; }
+    location = /.well-known/host-meta.json { return 301 /public.php?service=host-meta-json; }
     location ^~ /.well-known/acme-challenge/ {
         root /var/www/nextcloud;
         default_type "text/plain";
@@ -57,9 +60,9 @@ server {
         proxy_set_header   X-Real-IP          $remote_addr;
         proxy_set_header   X-Forwarded-For    $proxy_add_x_forwarded_for;
         proxy_set_header   X-Forwarded-Proto  https;
-        proxy_set_header   X-Forwarded-Host   $host;
+        proxy_set_header   X-Forwarded-Host   $host/onlyoffice;
         proxy_set_header   X-Forwarded-Port   443;
-        proxy_set_header   X-Forwarded-Prefix /onlyoffice;
+        proxy_set_header   X-Forwarded-Prefix "";
         proxy_set_header   Authorization      $http_authorization;
         proxy_set_header   Upgrade            $http_upgrade;
         proxy_set_header   Connection         $connection_upgrade;
