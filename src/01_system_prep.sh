@@ -88,6 +88,8 @@ updated = False
 
 deployment = data.setdefault("deployment", {})
 jwt = data.setdefault("jwt", {})
+nextcloud = data.setdefault("nextcloud", {})
+onlyoffice = data.setdefault("onlyoffice", {})
 
 admin_password = deployment.get("nextcloud_admin_password", "")
 if not admin_password or admin_password.startswith("CHANGE_ME"):
@@ -97,6 +99,16 @@ if not admin_password or admin_password.startswith("CHANGE_ME"):
 jwt_secret = jwt.get("secret", "")
 if not jwt_secret or jwt_secret in {"0" * 64, "CHANGE_ME_TO_SECURE_VALUE"} or len(jwt_secret) < 32:
     jwt["secret"] = secrets.token_hex(32)
+    updated = True
+
+nc_db_password = nextcloud.get("db_password", "")
+if not nc_db_password or "CHANGE_ME" in nc_db_password or len(nc_db_password) < 20:
+    nextcloud["db_password"] = secrets.token_hex(24)
+    updated = True
+
+oo_db_password = onlyoffice.get("db_password", "")
+if not oo_db_password or "CHANGE_ME" in oo_db_password or len(oo_db_password) < 20:
+    onlyoffice["db_password"] = secrets.token_hex(24)
     updated = True
 
 if updated:
@@ -124,6 +136,33 @@ load_params() {
     fi
     rm -f /tmp/config_loader.err
     eval "$exports"
+}
+
+write_secret_summary() {
+    local summary_path="/root/nextcloud-onlyoffice-secrets.txt"
+    umask 077
+    cat >"$summary_path" <<SUMMARY
+# Nextcloud + OnlyOffice deployment secrets (generated $(date +'%Y-%m-%d %H:%M:%S'))
+
+Deployment domain: ${DEPLOYMENT_BASE_DOMAIN:-UNSET}
+Nextcloud FQDN: ${NEXTCLOUD_FQDN:-UNSET}
+
+Nextcloud admin user: ${NEXTCLOUD_ADMIN_USER:-admin}
+Nextcloud admin password: ${NEXTCLOUD_ADMIN_PASSWORD:-UNSET}
+
+MariaDB database: ${NEXTCLOUD_DB_NAME:-nextcloud}
+MariaDB user: ${NEXTCLOUD_DB_USER:-ncuser}
+MariaDB password: ${NEXTCLOUD_DB_PASSWORD:-UNSET}
+
+PostgreSQL database: ${ONLYOFFICE_DB_NAME:-onlyoffice}
+PostgreSQL user: ${ONLYOFFICE_DB_USER:-oouser}
+PostgreSQL password: ${ONLYOFFICE_DB_PASSWORD:-UNSET}
+
+JWT secret: ${JWT_SECRET:-UNSET}
+
+File location: /etc/nextcloud-onlyoffice/params.yaml (root:root, 0640)
+SUMMARY
+    chmod 600 "$summary_path"
 }
 
 APT_OPTS=(-o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::ftp::Timeout=30)
@@ -271,6 +310,7 @@ main() {
     # reload after secrets generation
     reset_params_cache
     load_params
+    write_secret_summary
     info "Starting system preparation for ${NEXTCLOUD_FQDN}"
     update_system
     install_packages

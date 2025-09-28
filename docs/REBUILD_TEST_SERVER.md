@@ -29,6 +29,16 @@ When Hetzner rebuilds the test instance everything on disk is wiped, including `
 4. If a GitHub deploy key was used, regenerate it (from your workstation) and add the public key to the repo’s deploy-key list, then place the private key on the server (e.g., `/root/.ssh/hetzner_91_99_189_91`). Update `/root/.ssh/config` accordingly.
 
 ## 3. Re-run Automation
+
+Before running the automation, update the deployment parameters and let the system prep script generate credentials:
+
+1. Run `sudo ./src/01_system_prep.sh` once. If `/etc/nextcloud-onlyoffice/params.yaml` is missing, the script copies the template and exits with a warning.
+2. Edit `/etc/nextcloud-onlyoffice/params.yaml` (root only) and replace the placeholder values for:
+   - `deployment.base_domain`
+   - `deployment.nextcloud_domain` (should be `docs.<base_domain>`)
+   - `deployment.admin_email` and `deployment.letsencrypt_email`
+3. Re-run `sudo ./src/01_system_prep.sh`. The script now auto-generates secure secrets for the Nextcloud admin account, both database users, and the JWT. A summary is written to `/root/nextcloud-onlyoffice-secrets.txt` for safekeeping.
+
 With the repo checked out:
 ```bash
 cd /srv/collab
@@ -46,5 +56,6 @@ Capture each script’s output in `project-status-and-todo/test-results/` as bef
 - Re-enable the codex SSH user if required (create user, add to `sudo`, copy authorized key).
 - Trigger the diagnostics script: `sudo ./src/99_diagnostics.sh`.
 - Notify stakeholders to test the web UI at `https://docs.test-collab-site.com`.
+- Store the contents of `/root/nextcloud-onlyoffice-secrets.txt` in your password manager, then restrict access to root SSH keys as usual.
 
 Keep this document updated whenever the bootstrap flow changes.
