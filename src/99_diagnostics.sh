@@ -61,7 +61,9 @@ check_root() {
 
 # Display banner
 show_banner() {
-    clear
+    if [[ -t 1 && -n "${TERM:-}" && "${TERM}" != "dumb" ]]; then
+        clear
+    fi
     echo -e "${CYAN}${BOLD}"
     cat << 'EOF'
 ╔══════════════════════════════════════════════════════════════════════════════╗
@@ -113,7 +115,9 @@ check_services() {
         "mariadb:mysql"
         "postgresql"
         "redis-server:redis"
-        "onlyoffice-documentserver:onlyoffice"
+        "ds-docservice:onlyoffice-docservice"
+        "ds-converter:onlyoffice-converter"
+        "ds-metrics:onlyoffice-metrics"
         "fail2ban"
         "ufw"
     )
@@ -153,8 +157,8 @@ check_network() {
     for port_info in "${ports[@]}"; do
         local port="${port_info%%:*}"
         local service="${port_info##*:}"
-        
-        if netstat -tuln 2>/dev/null | grep -q ":$port "; then
+
+        if ss -H -tuln "sport = :$port" >/dev/null 2>&1; then
             success "$service (port $port) is listening"
         else
             warning "$service (port $port) is not listening"
@@ -185,22 +189,21 @@ check_nextcloud() {
     if [[ -f "$NEXTCLOUD_WEB_DIR/config/config.php" ]]; then
         success "Nextcloud configuration found"
         
-        # Get Nextcloud version
-        local version=$(grep "version" "$NEXTCLOUD_WEB_DIR/version.php" | cut -d"'" -f4 2>/dev/null || echo "Unknown")
-        info "Nextcloud version: $version"
-        
-        # Check occ status
-        if cd "$NEXTCLOUD_WEB_DIR" && sudo -u www-data php occ status --no-warnings 2>/dev/null; then
+        # Check occ status and use it as a DB connectivity indicator
+        local occ_status_output=""
+        if cd "$NEXTCLOUD_WEB_DIR" && occ_status_output=$(sudo -u www-data php occ status --no-warnings 2>/dev/null); then
             success "Nextcloud OCC status check passed"
+            echo "$occ_status_output" | tee -a "$LOG_FILE"
+            local nc_version="$(echo "$occ_status_output" | awk -F': ' '/versionstring/ {print $2}' | head -n1)"
+            if [[ -z "$nc_version" ]]; then
+                nc_version="$(echo "$occ_status_output" | awk -F': ' '/version/ {print $2}' | head -n1)"
+            fi
+            if [[ -n "$nc_version" ]]; then
+                info "Nextcloud version: $nc_version"
+            fi
+            success "Database connection verified via OCC"
         else
             error "Nextcloud OCC status check failed"
-        fi
-        
-        # Check database connection
-        if cd "$NEXTCLOUD_WEB_DIR" && sudo -u www-data php occ db:convert-filecache-bigint --no-interaction --dry-run 2>/dev/null >/dev/null; then
-            success "Database connection working"
-        else
-            error "Database connection failed"
         fi
         
     else
@@ -215,34 +218,46 @@ check_onlyoffice() {
     header "OnlyOffice Document Server Status"
     echo ""
     
-    # Check if OnlyOffice is installed
-    if systemctl list-unit-files | grep -q onlyoffice-documentserver; then
-        success "OnlyOffice Document Server is installed"
-        
-        # Check service status
-        if systemctl is-active --quiet onlyoffice-documentserver; then
-            success "OnlyOffice service is running"
-            
-            # Check healthcheck
-            if curl -s "http://127.0.0.1:$ONLYOFFICE_PORT/healthcheck" | grep -q "true"; then
-                success "OnlyOffice healthcheck passed"
+    local units=(ds-docservice ds-converter ds-metrics)
+    local found_unit=false
+    local inactive_units=()
+
+    for unit in "${units[@]}"; do
+        if systemctl list-unit-files "${unit}.service" >/dev/null 2>&1; then
+            found_unit=true
+            if systemctl is-active --quiet "${unit}.service"; then
+                success "${unit} is running"
             else
-                error "OnlyOffice healthcheck failed"
+                inactive_units+=("$unit")
             fi
-            
-            # Check discovery endpoint
-            if curl -s "http://127.0.0.1:$ONLYOFFICE_PORT/hosting/discovery" | grep -q "wopi-discovery"; then
-                success "OnlyOffice discovery endpoint working"
-            else
-                warning "OnlyOffice discovery endpoint not responding"
-            fi
-            
-        else
-            error "OnlyOffice service is not running"
         fi
-        
+    done
+
+    if ! $found_unit; then
+        error "OnlyOffice Document Server units not found"
+        echo ""
+        return
+    fi
+
+    if [[ ${#inactive_units[@]} -gt 0 ]]; then
+        for unit in "${inactive_units[@]}"; do
+            error "$unit is not running"
+        done
+        echo ""
+        return
+    fi
+
+    # If all units running, perform HTTP checks
+    if curl -fsS "http://127.0.0.1:$ONLYOFFICE_PORT/healthcheck" | grep -q "true"; then
+        success "OnlyOffice healthcheck passed"
     else
-        error "OnlyOffice Document Server is not installed"
+        error "OnlyOffice healthcheck failed"
+    fi
+
+    if curl -fsS "http://127.0.0.1:$ONLYOFFICE_PORT/hosting/discovery" | grep -q "wopi-discovery"; then
+        success "OnlyOffice discovery endpoint working"
+    else
+        warning "OnlyOffice discovery endpoint not responding"
     fi
     
     echo ""
@@ -253,46 +268,55 @@ check_ssl() {
     header "SSL Certificate Status"
     echo ""
     
-    # Find domain from nginx config
-    local domain=""
-    if [[ -f /root/ssl-setup-summary.txt ]]; then
-        domain=$(grep "Domain:" /root/ssl-setup-summary.txt | cut -d' ' -f2)
+    local domains=()
+
+    if [[ -d "$NEXTCLOUD_WEB_DIR" ]]; then
+        for idx in {0..9}; do
+            local domain_value
+            domain_value=$(cd "$NEXTCLOUD_WEB_DIR" && sudo -u www-data php occ config:system:get trusted_domains "$idx" 2>/dev/null || true)
+            if [[ -n "$domain_value" ]]; then
+                domains+=("$domain_value")
+            fi
+        done
     fi
-    
-    if [[ -z "$domain" ]]; then
-        warning "Domain not found in SSL setup summary"
+
+    if [[ ${#domains[@]} -eq 0 ]]; then
+        warning "Could not determine domains from Nextcloud trusted_domains"
         return
     fi
-    
-    local cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"
-    
-    if [[ -f "$cert_path" ]]; then
-        success "SSL certificate found for $domain"
-        
-        # Check certificate expiry
-        local expiry_date=$(openssl x509 -enddate -noout -in "$cert_path" | cut -d= -f2)
-        local expiry_epoch=$(date -d "$expiry_date" +%s)
-        local current_epoch=$(date +%s)
-        local days_until_expiry=$(( (expiry_epoch - current_epoch) / 86400 ))
-        
-        if [[ $days_until_expiry -gt 30 ]]; then
-            success "Certificate expires in $days_until_expiry days ($expiry_date)"
-        elif [[ $days_until_expiry -gt 7 ]]; then
-            warning "Certificate expires in $days_until_expiry days ($expiry_date)"
-        else
-            error "Certificate expires in $days_until_expiry days ($expiry_date) - RENEWAL NEEDED"
+
+    for domain in "${domains[@]}"; do
+        if [[ "$domain" == "localhost" || "$domain" == "127.0.0.1" || "$domain" == "::1" ]]; then
+            continue
         fi
-        
-        # Test HTTPS access
-        if curl -s -I "https://$domain/" | grep -q "HTTP/"; then
-            success "HTTPS access working"
+        local cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"
+
+        if [[ -f "$cert_path" ]]; then
+            success "SSL certificate found for $domain"
+
+            local expiry_date expiry_epoch current_epoch days_until_expiry
+            expiry_date=$(openssl x509 -enddate -noout -in "$cert_path" | cut -d= -f2)
+            expiry_epoch=$(date -d "$expiry_date" +%s)
+            current_epoch=$(date +%s)
+            days_until_expiry=$(( (expiry_epoch - current_epoch) / 86400 ))
+
+            if [[ $days_until_expiry -gt 30 ]]; then
+                success "Certificate expires in $days_until_expiry days ($expiry_date)"
+            elif [[ $days_until_expiry -gt 7 ]]; then
+                warning "Certificate expires in $days_until_expiry days ($expiry_date)"
+            else
+                error "Certificate expires in $days_until_expiry days ($expiry_date) - RENEWAL NEEDED"
+            fi
+
+            if curl -fsSI "https://$domain/" >/dev/null 2>&1; then
+                success "HTTPS access working for $domain"
+            else
+                error "HTTPS access failed for $domain"
+            fi
         else
-            error "HTTPS access failed"
+            warning "SSL certificate not found for $domain"
         fi
-        
-    else
-        error "SSL certificate not found for $domain"
-    fi
+    done
     
     echo ""
 }
@@ -308,42 +332,63 @@ check_integration() {
     fi
     
     cd "$NEXTCLOUD_WEB_DIR"
-    
-    # Check if OnlyOffice app is installed
-    if sudo -u www-data php occ app:list | grep -q "onlyoffice"; then
+
+    local onlyoffice_installed=false
+    local onlyoffice_enabled=false
+    local app_list_json=""
+
+    if command -v jq >/dev/null 2>&1; then
+        app_list_json=$(sudo -u www-data php occ app:list --output=json 2>/dev/null || echo "")
+        if [[ -n "$app_list_json" ]]; then
+            if echo "$app_list_json" | jq -e '.enabled | has("onlyoffice")' >/dev/null 2>&1; then
+                onlyoffice_enabled=true
+                onlyoffice_installed=true
+            elif echo "$app_list_json" | jq -e '.disabled | has("onlyoffice")' >/dev/null 2>&1; then
+                onlyoffice_installed=true
+            fi
+        fi
+    fi
+
+    if [[ "$onlyoffice_installed" == false ]]; then
+        # Fallback without jq
+        if sudo -u www-data php occ app:list | grep -q "onlyoffice"; then
+            onlyoffice_installed=true
+            if sudo -u www-data php occ app:list | grep -A1 "onlyoffice" | grep -q "enabled"; then
+                onlyoffice_enabled=true
+            fi
+        fi
+    fi
+
+    if [[ "$onlyoffice_installed" == true ]]; then
         success "OnlyOffice app is installed"
-        
-        # Check if app is enabled
-        if sudo -u www-data php occ app:list | grep -A1 "onlyoffice" | grep -q "enabled"; then
+
+        if [[ "$onlyoffice_enabled" == true ]]; then
             success "OnlyOffice app is enabled"
-            
-            # Check configuration
+
             local doc_server_url=$(sudo -u www-data php occ config:app:get onlyoffice DocumentServerUrl 2>/dev/null || echo "")
             local internal_url=$(sudo -u www-data php occ config:app:get onlyoffice DocumentServerInternalUrl 2>/dev/null || echo "")
             local jwt_secret=$(sudo -u www-data php occ config:app:get onlyoffice jwt_secret 2>/dev/null || echo "")
-            
+
             if [[ -n "$doc_server_url" ]]; then
                 success "Document Server URL configured: $doc_server_url"
             else
                 error "Document Server URL not configured"
             fi
-            
+
             if [[ -n "$internal_url" ]]; then
                 success "Internal URL configured: $internal_url"
             else
                 warning "Internal URL not configured"
             fi
-            
+
             if [[ -n "$jwt_secret" ]]; then
                 success "JWT secret configured"
             else
                 warning "JWT secret not configured"
             fi
-            
         else
             error "OnlyOffice app is not enabled"
         fi
-        
     else
         error "OnlyOffice app is not installed"
     fi
@@ -449,16 +494,18 @@ generate_report() {
         echo ""
         
         echo "Service Status:"
-        systemctl is-active nginx && echo "✓ Nginx" || echo "✗ Nginx"
-        systemctl is-active php*-fpm && echo "✓ PHP-FPM" || echo "✗ PHP-FPM"
-        systemctl is-active mariadb && echo "✓ MariaDB" || echo "✗ MariaDB"
-        systemctl is-active postgresql && echo "✓ PostgreSQL" || echo "✗ PostgreSQL"
-        systemctl is-active redis-server && echo "✓ Redis" || echo "✗ Redis"
-        systemctl is-active onlyoffice-documentserver && echo "✓ OnlyOffice" || echo "✗ OnlyOffice"
+        systemctl is-active nginx >/dev/null 2>&1 && echo "✓ Nginx" || echo "✗ Nginx"
+        systemctl is-active php8.3-fpm >/dev/null 2>&1 && echo "✓ PHP-FPM" || echo "✗ PHP-FPM"
+        systemctl is-active mariadb >/dev/null 2>&1 && echo "✓ MariaDB" || echo "✗ MariaDB"
+        systemctl is-active postgresql >/dev/null 2>&1 && echo "✓ PostgreSQL" || echo "✗ PostgreSQL"
+        systemctl is-active redis-server >/dev/null 2>&1 && echo "✓ Redis" || echo "✗ Redis"
+        systemctl is-active ds-docservice >/dev/null 2>&1 && echo "✓ OnlyOffice Docservice" || echo "✗ OnlyOffice Docservice"
+        systemctl is-active ds-converter >/dev/null 2>&1 && echo "✓ OnlyOffice Converter" || echo "✗ OnlyOffice Converter"
+        systemctl is-active ds-metrics >/dev/null 2>&1 && echo "✓ OnlyOffice Metrics" || echo "✗ OnlyOffice Metrics"
         echo ""
         
         echo "Network Ports:"
-        netstat -tuln 2>/dev/null | grep -E ":(80|443|3306|5432|6379|$ONLYOFFICE_PORT) " || echo "No listening ports found"
+        ss -H -tuln 2>/dev/null | grep -E ":(80|443|3306|5432|6379|$ONLYOFFICE_PORT)" || echo "No listening ports found"
         echo ""
         
         echo "Disk Usage:"
@@ -495,8 +542,8 @@ show_recommendations() {
     echo ""
     
     echo "1. OnlyOffice not working:"
-    echo "   - Check service: systemctl status onlyoffice-documentserver"
-    echo "   - Check logs: journalctl -u onlyoffice-documentserver"
+    echo "   - Check services: systemctl status ds-docservice ds-converter ds-metrics"
+    echo "   - Check logs: journalctl -u ds-docservice -u ds-converter -u ds-metrics"
     echo "   - Test healthcheck: curl http://127.0.0.1:$ONLYOFFICE_PORT/healthcheck"
     echo ""
     
@@ -513,7 +560,7 @@ show_recommendations() {
     echo ""
     
     echo "4. Integration problems:"
-    echo "   - Check app status: sudo -u www-data php occ app:list | grep onlyoffice"
+    echo "   - Check app status: sudo -u www-data php occ app:list --output=json | jq '.enabled | has(\"onlyoffice\")'"
     echo "   - Verify JWT secret matches between Nextcloud and OnlyOffice"
     echo "   - Test internal connectivity: curl http://127.0.0.1:$ONLYOFFICE_PORT/"
     echo ""

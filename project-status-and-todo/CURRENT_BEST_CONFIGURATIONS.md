@@ -8,7 +8,7 @@ This document maintains the current best versions of all important configuration
 - **Install location:** `/etc/nextcloud-onlyoffice/params.yaml` (copied by `src/01_system_prep.sh` on first run)
 - **Placeholders:** every value defaults to a `CHANGE_ME_*` token so administrators must supply the real base domain, contact emails, and database credentials before continuing. The system prep script auto-generates secure values for the Nextcloud admin password and JWT secret if the placeholders remain.
 - **Reminder:** the Nextcloud FQDN must begin with `docs.` and the OnlyOffice FQDN with `onlyoffice.` to satisfy validation in `src/lib/config_loader.py`.
-- **Package note:** `src/01_system_prep.sh` installs `php-apcu`/`php-apcu-bc` so the `memcache.local` setting resolves without manual intervention.
+- **Package note:** `src/01_system_prep.sh` installs `php-apcu`/`php-apcu-bc` so the `memcache.local` setting resolves without manual intervention. Keep `php8.3-gmp` and `libmagickcore-6.q16-7-extra` on the required package list so WebAuthn/SFTP features and Imagick SVG rendering stay available after rebuilds.
 
 ## OnlyOffice Document Server Configuration
 
@@ -51,6 +51,32 @@ See `configs/onlyoffice/local.json` for the managed template (the installer rend
 - sameTab: `true` (keeps editing within the Nextcloud browser tab so the close control behaves correctly)
 
 **Status:** ✅ One-domain subpath mode active; OCC commands above are idempotent for reruns.
+
+### Nextcloud App Baseline
+
+- Enable the following built-in apps after installation: `encryption`, `onlyoffice`, `files_downloadlimit`, `files_reminders`, `webhook_listeners`, and all core defaults listed in the session snapshot (see `project-status-and-todo/session-readiness-2025-09-28.md`).
+- Keep optional modules disabled by default: `admin_audit`, `files_external`, `suspicious_login`, `twofactor_nextcloud_notification`, `twofactor_totp`, `user_ldap`.
+- Encryption app is enabled but full data-at-rest encryption remains off (`occ encryption:status` shows `enabled: false`). Admins can opt-in by running `occ encryption:enable` post-deployment if they accept the operational impacts.
+
+### Nextcloud System Settings
+
+- Set `maintenance_window_start` to `2` (02:00 server time) so heavy background jobs avoid daytime usage. Applied via `sudo -u www-data php occ config:system:set maintenance_window_start --type=integer --value=2` during deployment.
+- Run `sudo -u www-data php occ maintenance:repair --include-expensive` after the initial install to complete mimetype migrations and queue the necessary cleanup jobs.
+
+### SMTP Configuration Guidance
+
+- Deployment scripts leave email disabled by default. Administrators should configure SMTP immediately after install using provider-specific credentials.
+- Recommended baseline (replace placeholders):
+  - `occ config:system:set mail_smtpmode   --value="smtp"`
+  - `occ config:system:set mail_smtpsecure --value="tls"`
+  - `occ config:system:set mail_smtphost   --value="smtp.example.com"`
+  - `occ config:system:set mail_smtpport   --value="587" --type=integer`
+  - `occ config:system:set mail_smtpauth   --value="1" --type=integer`
+  - `occ config:system:set mail_smtpauthtype --value="LOGIN"`
+  - `occ config:system:set mail_smtpname   --value="USER@example.com"`
+  - `occ config:system:set mail_smtppassword --value="CHANGE_ME_SECURE_PASSWORD"`
+- Capture the finalized settings in `/etc/nextcloud-onlyoffice/params.yaml` once we wire SMTP into the automation scripts.
+- See `Project Documents/outbound mail setup cheatsheet.md` for provider-specific examples (Brevo, etc.).
 
 ## Nginx Configuration
 
@@ -157,6 +183,12 @@ opcache.interned_strings_buffer=16
 opcache.max_accelerated_files=10000
 opcache.revalidate_freq=1
 ```
+
+**PHP-FPM pool override** – `configs/php/pool.d/www.conf`
+```ini
+clear_env = no
+```
+Set during deployment so `getenv()` calls inside Nextcloud/OnlyOffice resolve correctly when background jobs spawn via PHP-FPM.
 
 The system prep script copies these snippets into `/etc/fail2ban/jail.d/nextcloud-onlyoffice.conf` and `/etc/php/8.3/{fpm,cli}/conf.d/90-nextcloud.ini` respectively.
 

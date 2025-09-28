@@ -182,6 +182,71 @@ sync_core_config() {
     fi
 }
 
+configure_smtp() {
+    local enabled="${SMTP_ENABLED:-false}"
+    shopt -s nocasematch
+    if [[ "$enabled" != "true" ]]; then
+        info "SMTP automation disabled in parameters; skipping"
+        shopt -u nocasematch
+        return
+    fi
+    shopt -u nocasematch
+
+    local host="${SMTP_HOST:-}"
+    local port="${SMTP_PORT:-}"
+    local secure="${SMTP_SECURE:-tls}"
+    local mode="${SMTP_MODE:-smtp}"
+    local authtype="${SMTP_AUTHTYPE:-LOGIN}"
+    local username="${SMTP_USERNAME:-}"
+    local password="${SMTP_PASSWORD:-}"
+    local from_address="${SMTP_FROM_ADDRESS:-}"
+    local from_name="${SMTP_FROM_NAME:-Nextcloud}"
+    local auth_flag="${SMTP_AUTH:-true}"
+
+    for value in "$host" "$username" "$password" "$from_address"; do
+        if [[ -z "$value" || "$value" == *"CHANGE_ME"* ]]; then
+            warning "SMTP parameters contain placeholder values; skipping automation"
+            return
+        fi
+    done
+
+    if ! [[ "$port" =~ ^[0-9]+$ ]]; then
+        warning "SMTP port '$port' is not numeric; skipping automation"
+        return
+    fi
+
+    local local_part="$from_address"
+    local domain_part=""
+    if [[ "$from_address" == *"@"* ]]; then
+        local_part="${from_address%@*}"
+        domain_part="${from_address#*@}"
+    else
+        warning "SMTP from_address '$from_address' lacks '@'; skipping automation"
+        return
+    fi
+
+    local auth_value="0"
+    shopt -s nocasematch
+    if [[ "$auth_flag" == "true" || "$auth_flag" == "yes" || "$auth_flag" == "1" ]]; then
+        auth_value="1"
+    fi
+    shopt -u nocasematch
+
+    info "Configuring Nextcloud SMTP settings"
+    occ config:system:set mail_smtpmode --value="$mode" >>"$LOG_FILE" 2>&1
+    occ config:system:set mail_smtpsecure --value="$secure" >>"$LOG_FILE" 2>&1
+    occ config:system:set mail_smtphost --value="$host" >>"$LOG_FILE" 2>&1
+    occ config:system:set mail_smtpport --value="$port" --type=integer >>"$LOG_FILE" 2>&1
+    occ config:system:set mail_smtpauth --value="$auth_value" --type=integer >>"$LOG_FILE" 2>&1
+    occ config:system:set mail_smtpauthtype --value="$authtype" >>"$LOG_FILE" 2>&1
+    occ config:system:set mail_smtpname --value="$username" >>"$LOG_FILE" 2>&1
+    occ config:system:set mail_smtppassword --value="$password" >>"$LOG_FILE" 2>&1
+    occ config:system:set mail_from_address --value="$local_part" >>"$LOG_FILE" 2>&1
+    occ config:system:set mail_domain --value="$domain_part" >>"$LOG_FILE" 2>&1
+    occ config:system:set mail_from_name --value="$from_name" >>"$LOG_FILE" 2>&1
+    success "SMTP configuration applied"
+}
+
 wait_for_docservice() {
     info "Waiting for DocumentServer health endpoint"
     local attempt=0
@@ -236,6 +301,7 @@ main() {
     ensure_onlyoffice_app
     configure_connector
     sync_core_config
+    configure_smtp
     connector_healthcheck
     run_smoke_tests
     summarise

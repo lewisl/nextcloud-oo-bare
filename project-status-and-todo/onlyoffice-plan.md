@@ -1,6 +1,6 @@
 # OnlyOffice Installation & Integration Plan
 
-## Key Issues Identified
+## ✅ Key Issues Identified
 - `src/04_onlyoffice_install_dual_domain.sh` rewrites OnlyOffice's bundled nginx to proxy to itself (127.0.0.1:8080 -> 127.0.0.1:8080), causing a loop instead of hitting docservice ports.
 - The same script rewrites `local.json` via a broad `sed` that touches every `"string":` field, risking corruption of unrelated values.
 - Systemd management references `ds-*` units that do not exist in current packages; actual service names differ.
@@ -9,11 +9,11 @@
 - `occ app:install onlyoffice` runs unconditionally; replays will fail if the app is already present.
 
 ## Planned Actions
-1. **Baseline Validation**
+1. ✅ **Baseline Validation**
    - Verify `params.yaml` parameters for OnlyOffice and Nextcloud domains.
    - Capture current OnlyOffice service names and log directories for reference.
 
-2. **Stabilize `04_onlyoffice_install_dual_domain.sh`**
+2. ✅ **Stabilize `04_onlyoffice_install_dual_domain.sh`**
    - Update repository key handling, ensure `apt install` is re-runnable, and configure vendor nginx to bind localhost on a safe port without self-proxy.
    - Replace ad-hoc `local.json` edits with a template from `configs/onlyoffice/`, injecting DB/JWT values safely.
    - Manage the correct systemd units (`onlyoffice-documentserver` and associated timers) with enable/start semantics and health checks.

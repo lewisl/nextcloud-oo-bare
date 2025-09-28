@@ -1,7 +1,7 @@
 # Next Steps – Nextcloud + OnlyOffice Toolkit
 
-**Date:** September 25, 2025  
-**Current Status:** Script refactors 01–05 landed; regressions observed (Nextcloud dashboard/preview apps blank, OnlyOffice conversion error)  
+**Date:** September 27, 2025  
+**Current Status:** Scripts working; still need a pass of all scripts on bare host with no changes or direct command interventions 
 **Architecture:** amd64 Hetzner VPS, Nextcloud + OnlyOffice on single host, `/onlyoffice/` subpath proxy
 
 ---
@@ -14,16 +14,16 @@
 
 ## Currently Broken / Needs Attention
 
-- ❌ Nextcloud internal apps (dashboard, viewer, text, photos) return blank views after login
-- ❌ `occ onlyoffice:documentserver --check` reports “Conversion error”; DocumentServer logs show JWT permission warnings
-- ❌ Cloudflare/browser cache still suspected of serving stale assets despite initial purges
+- ✅ Nextcloud internal apps (dashboard, viewer, text, photos) return blank views after login
+- ✅ `occ onlyoffice:documentserver --check` reports “Conversion error”; DocumentServer logs show JWT permission warnings
+- ✅ Cloudflare/browser cache still suspected of serving stale assets despite initial purges
 
 ## Script Status and next steps at src/
-- Scripts with 'dual-domain' in the name are misnamed now that we have successfully changed to a single domain 
-- Scripts have been created/edited by different agents over a 6 week development process
-- Script numbering does not always reflect the correct order of execution. **This needs to be fixed**
-- Scripts have only partially been updated to reflect the current successful deployment at the test site.
-- You should evaluate all scripts for obvious bugs or out-of-date configurations, fix, and then tested
+- ✅ Scripts with 'dual-domain' in the name are misnamed now that we have successfully changed to a single domain 
+- ✅ Scripts have been created/edited by different agents over a 6 week development process.  Pretty much all Codex and gpt-5-codex now.
+- Script numbering does not always reflect the correct order of execution. **This needs to be investigated further**
+- ✅ Scripts have only partially been updated to reflect the current successful deployment at the test site.
+- ✅ You should evaluate all scripts for obvious bugs or out-of-date configurations, fix, and then tested
 - Determine the correct order that scripts should be run by the admin; consider if specific operations should be moved between scripts to enable sensible operations.  rename the scripts to match the new correct order of execution.  
 - Update documentation to show correct instructions for running the revised scripts
 
@@ -32,7 +32,7 @@
 1. **Lock in repo state**
    - Commit/push script refactors + configs now (pre-req before any snapshot rollback).
 
-2. **Restore functionality before further refactors**
+2. ✅ **Restore functionality before further refactors**
    - Diff active nginx vhost against templates and update `src/05_nginx_config.sh` to render the proven configuration.
    - Investigate OnlyOffice conversion error (JWT headers, docservice logs, service restart) until `occ onlyoffice:documentserver --check` passes again.
    - Confirm Cloudflare/cache isn’t serving stale JS (Development Mode, hard refresh). If issues persist, capture browser console/network errors.
@@ -48,7 +48,7 @@
 ## Open Questions / Decisions
 
 - Whether to remove `onlyoffice.<domain>` DNS record immediately or keep as dormant fallback.
-- Confirm Cloudflare SSL/TLS settings still align with single-origin approach (Full/Strict, proxy on).
+- ✅ Confirm Cloudflare SSL/TLS settings still align with single-origin approach (Full/Strict, proxy on).
 - Determine plan for production cutover (bedfordfallsbbbl.org) once automation is stable again.
 
 ## Deferred / Nice-to-have

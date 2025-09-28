@@ -151,6 +151,36 @@ apply_base_config() {
     sudo -u www-data php "$NEXTCLOUD_ROOT/occ" config:system:set redis timeout --value="0.0" --type=float >>"$LOG_FILE" 2>&1
 }
 
+enable_recommended_apps() {
+    info "Enabling recommended Nextcloud apps"
+    local apps=(
+        encryption
+        files_downloadlimit
+        files_reminders
+        webhook_listeners
+    )
+
+    for app in "${apps[@]}"; do
+        if ! sudo -u www-data php "$NEXTCLOUD_ROOT/occ" app:enable "$app" >>"$LOG_FILE" 2>&1; then
+            warning "Unable to enable app '$app' (see log for details)"
+        fi
+    done
+}
+
+configure_maintenance_window() {
+    info "Setting maintenance window start hour"
+    if ! sudo -u www-data php "$NEXTCLOUD_ROOT/occ" config:system:set maintenance_window_start --type=integer --value="2" >>"$LOG_FILE" 2>&1; then
+        warning "Failed to set maintenance_window_start; review occ output in $LOG_FILE"
+    fi
+}
+
+run_expensive_repairs() {
+    info "Running Nextcloud maintenance:repair --include-expensive"
+    if ! sudo -u www-data php "$NEXTCLOUD_ROOT/occ" maintenance:repair --include-expensive >>"$LOG_FILE" 2>&1; then
+        warning "maintenance:repair encountered issues; check $LOG_FILE"
+    fi
+}
+
 summarise() {
     local deployed_version="unknown"
     if [[ -f "$NEXTCLOUD_ROOT/version.php" ]]; then
@@ -181,6 +211,9 @@ main() {
     download_nextcloud
     run_cli_install
     apply_base_config
+    enable_recommended_apps
+    configure_maintenance_window
+    run_expensive_repairs
     summarise
 }
 

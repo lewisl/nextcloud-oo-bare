@@ -41,6 +41,8 @@ server {
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Referrer-Policy "no-referrer" always;
     add_header Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()" always;
+    add_header X-Robots-Tag "noindex,nofollow" always;
+    add_header X-Permitted-Cross-Domain-Policies "none" always;
 
     location = /.well-known/carddav { return 301 /remote.php/dav; }
     location = /.well-known/caldav  { return 301 /remote.php/dav; }

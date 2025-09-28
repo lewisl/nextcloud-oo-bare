@@ -15,6 +15,7 @@ PARAMS_FILE="${SYSTEM_CONFIG_DIR}/params.yaml"
 SAMPLE_PARAMS="${PROJECT_ROOT}/configs/params.yaml"
 FAIL2BAN_SNIPPET="${PROJECT_ROOT}/configs/fail2ban/nextcloud-onlyoffice.conf"
 PHP_SNIPPET="${PROJECT_ROOT}/configs/php/nextcloud.ini"
+PHP_POOL_CONF="/etc/php/8.3/fpm/pool.d/www.conf"
 LOG_FILE="/var/log/nextcloud-install.log"
 
 RED='\033[0;31m'
@@ -166,6 +167,8 @@ install_packages() {
         php8.3-imagick
         php8.3-redis
         php8.3-apcu
+        php8.3-gmp
+        libmagickcore-6.q16-7-extra
         postgresql
         postgresql-contrib
         rabbitmq-server
@@ -214,6 +217,17 @@ configure_php() {
     else
         warning "PHP override snippet not found at $PHP_SNIPPET; skipping"
     fi
+
+    if [[ -f "$PHP_POOL_CONF" ]]; then
+        if grep -Eq '^\s*clear_env\s*=' "$PHP_POOL_CONF"; then
+            sed -i 's/^\s*clear_env\s*=.*/clear_env = no/' "$PHP_POOL_CONF"
+        else
+            printf '\nclear_env = no\n' >>"$PHP_POOL_CONF"
+        fi
+    else
+        warning "PHP-FPM pool file not found at $PHP_POOL_CONF; clear_env override skipped"
+    fi
+
     systemctl reload php8.3-fpm >>"$LOG_FILE" 2>&1 || systemctl restart php8.3-fpm >>"$LOG_FILE" 2>&1
 }
 

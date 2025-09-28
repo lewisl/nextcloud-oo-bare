@@ -22,3 +22,16 @@ onlyoffice:
 
 jwt:
   secret: CHANGE_ME_TO_SECURE_VALUE
+
+smtp:
+  enabled: false
+  mode: smtp
+  secure: tls
+  host: smtp.CHANGE_ME_BASE_DOMAIN
+  port: 587
+  auth: true
+  authtype: LOGIN
+  username: CHANGE_ME_SMTP_USERNAME
+  password: CHANGE_ME_SMTP_PASSWORD
+  from_address: notifications@CHANGE_ME_BASE_DOMAIN
+  from_name: Nextcloud

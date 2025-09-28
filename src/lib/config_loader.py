@@ -51,11 +51,27 @@ class JWTConfig:
 
 
 @dataclass(frozen=True)
+class SMTPConfig:
+    enabled: bool
+    mode: str
+    secure: str
+    host: str
+    port: int
+    auth: bool
+    authtype: str
+    username: str
+    password: str
+    from_address: str
+    from_name: str
+
+
+@dataclass(frozen=True)
 class Params:
     deployment: DeploymentConfig
     nextcloud_db: DatabaseConfig
     onlyoffice_db: DatabaseConfig
     jwt: JWTConfig
+    smtp: SMTPConfig
 
     def validate(self) -> List[str]:
         issues: List[str] = []
@@ -87,6 +103,18 @@ class Params:
                 issues.append(f"{label} database password should be at least 16 characters")
         if len(self.jwt.secret) < 32:
             issues.append("JWT secret should be at least 32 characters")
+
+        if self.smtp.enabled:
+            if not self.smtp.host or "CHANGE_ME" in self.smtp.host:
+                issues.append("smtp.host must be set when smtp.enabled is true")
+            if self.smtp.port <= 0:
+                issues.append("smtp.port must be greater than zero when smtp.enabled is true")
+            if not self.smtp.username or "CHANGE_ME" in self.smtp.username:
+                issues.append("smtp.username must be set when smtp.enabled is true")
+            if not self.smtp.password or "CHANGE_ME" in self.smtp.password:
+                issues.append("smtp.password must be set when smtp.enabled is true")
+            if "@" not in self.smtp.from_address:
+                issues.append("smtp.from_address must contain an '@' when smtp.enabled is true")
         return issues
 
 
@@ -105,6 +133,17 @@ CONFIG_KEY_MAP = {
     "onlyoffice_db.user": "ONLYOFFICE_DB_USER",
     "onlyoffice_db.password": "ONLYOFFICE_DB_PASSWORD",
     "jwt.secret": "JWT_SECRET",
+    "smtp.enabled": "SMTP_ENABLED",
+    "smtp.mode": "SMTP_MODE",
+    "smtp.secure": "SMTP_SECURE",
+    "smtp.host": "SMTP_HOST",
+    "smtp.port": "SMTP_PORT",
+    "smtp.auth": "SMTP_AUTH",
+    "smtp.authtype": "SMTP_AUTHTYPE",
+    "smtp.username": "SMTP_USERNAME",
+    "smtp.password": "SMTP_PASSWORD",
+    "smtp.from_address": "SMTP_FROM_ADDRESS",
+    "smtp.from_name": "SMTP_FROM_NAME",
 }
 
 
@@ -149,6 +188,23 @@ def load_params(path: Optional[Path] = None) -> Params:
     nextcloud_raw = _section(raw, "nextcloud")
     onlyoffice_raw = _section(raw, "onlyoffice")
     jwt_raw = _section(raw, "jwt")
+    smtp_raw = raw.get("smtp", {})
+    if smtp_raw and not isinstance(smtp_raw, dict):
+        raise ConfigLoaderError("Section 'smtp' must be a mapping if provided")
+
+    def _as_bool(value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        text = str(value).strip().lower()
+        return text in {"1", "true", "yes", "on"}
+
+    def _as_int(value: Any, default: int = 0) -> int:
+        try:
+            return int(str(value).strip())
+        except (TypeError, ValueError):
+            return default
 
     deployment = DeploymentConfig(
         base_domain=str(deployment_raw.get("base_domain", "")).strip(),
@@ -174,11 +230,26 @@ def load_params(path: Optional[Path] = None) -> Params:
 
     jwt = JWTConfig(secret=str(jwt_raw.get("secret", "")).strip())
 
+    smtp = SMTPConfig(
+        enabled=_as_bool(smtp_raw.get("enabled", False)),
+        mode=str(smtp_raw.get("mode", "smtp")).strip() or "smtp",
+        secure=str(smtp_raw.get("secure", "tls")).strip() or "tls",
+        host=str(smtp_raw.get("host", "")).strip(),
+        port=_as_int(smtp_raw.get("port", 0), 0),
+        auth=_as_bool(smtp_raw.get("auth", True)),
+        authtype=str(smtp_raw.get("authtype", "LOGIN")).strip() or "LOGIN",
+        username=str(smtp_raw.get("username", "")).strip(),
+        password=str(smtp_raw.get("password", "")).strip(),
+        from_address=str(smtp_raw.get("from_address", "")).strip(),
+        from_name=str(smtp_raw.get("from_name", "")).strip(),
+    )
+
     params = Params(
         deployment=deployment,
         nextcloud_db=nextcloud_db,
         onlyoffice_db=onlyoffice_db,
         jwt=jwt,
+        smtp=smtp,
     )
 
     issues = params.validate()
