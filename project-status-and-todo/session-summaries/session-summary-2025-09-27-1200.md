@@ -1,3 +1,7 @@
+# Session Summary — 2025-09-27 12:00 UTC
+
+> Note: This document was originally tracked as `project-status-and-todo/NEXT_STEPS.md`; moved into the canonical session summaries directory on 2025-09-29 for consistency.
+
 # Next Steps – Nextcloud + OnlyOffice Toolkit
 
 **Date:** September 27, 2025  

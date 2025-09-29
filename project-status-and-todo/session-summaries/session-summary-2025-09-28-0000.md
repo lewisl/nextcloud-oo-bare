@@ -1,3 +1,7 @@
+# Session Summary — 2025-09-28 00:00 UTC
+
+> Note: Migrated from `project-status-and-todo/session-readiness-2025-09-28.md` on 2025-09-29 to consolidate session planning notes.
+
 Session Goals
 
 Verify the current running deployment (services up, OnlyOffice editing, LetsEncrypt renewals etc.).
