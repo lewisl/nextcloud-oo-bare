@@ -15,6 +15,8 @@ PARAMS_FILE="${SYSTEM_CONFIG_DIR}/params.yaml"
 LOG_FILE="/var/log/nextcloud-install.log"
 WEBROOT="/var/www/nextcloud"
 CERTBOT_BIN="/usr/bin/certbot"
+CLOUDFLARE_CREDS="/etc/letsencrypt/cloudflare.ini"
+CLOUDFLARE_PROPAGATION_SECONDS=${CLOUDFLARE_PROPAGATION_SECONDS:-60}
 APT_OPTS=(-o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::ftp::Timeout=30)
 
 RED='\033[0;31m'
@@ -113,7 +115,10 @@ parse_args() {
 ensure_packages() {
     info "Ensuring certbot dependencies"
     DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTS[@]}" update -y >>"$LOG_FILE" 2>&1
-    DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTS[@]}" install -y certbot python3-certbot-nginx >>"$LOG_FILE" 2>&1
+    DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTS[@]}" install -y \
+        certbot \
+        python3-certbot-nginx \
+        python3-certbot-dns-cloudflare >>"$LOG_FILE" 2>&1
 }
 
 certificate_exists() {
@@ -127,12 +132,11 @@ request_certificate() {
     local staging_flag="$3"
     local force_flag="$4"
 
-    mkdir -p "$WEBROOT"
-
     local -a args=(
         certonly
-        --webroot
-        --webroot-path "$WEBROOT"
+        --dns-cloudflare
+        --dns-cloudflare-credentials "$CLOUDFLARE_CREDS"
+        --dns-cloudflare-propagation-seconds "$CLOUDFLARE_PROPAGATION_SECONDS"
         --domain "$domain"
         --agree-tos
         --non-interactive
@@ -147,6 +151,7 @@ request_certificate() {
     fi
 
     info "Requesting certificate for ${domain}"
+    info "Using Cloudflare DNS challenge with credentials at ${CLOUDFLARE_CREDS}"
     "$CERTBOT_BIN" "${args[@]}" >>"$LOG_FILE" 2>&1 || abort "Certbot failed to obtain certificate"
 }
 
@@ -162,6 +167,16 @@ enable_timer() {
     info "Ensuring certbot.timer is enabled"
     systemctl enable certbot.timer >>"$LOG_FILE" 2>&1 || warning "Failed to enable certbot.timer"
     systemctl start certbot.timer >>"$LOG_FILE" 2>&1 || warning "Failed to start certbot.timer"
+}
+
+ensure_cloudflare_credentials() {
+    [[ -f "$CLOUDFLARE_CREDS" ]] || abort "Missing Cloudflare credentials file at $CLOUDFLARE_CREDS"
+    local perms
+    perms=$(stat -c %a "$CLOUDFLARE_CREDS" 2>/dev/null || true)
+    if [[ "$perms" != "600" ]]; then
+        warning "Cloudflare credentials should have 600 permissions; adjusting"
+        chmod 600 "$CLOUDFLARE_CREDS" || warning "Failed to chmod 600 $CLOUDFLARE_CREDS"
+    fi
 }
 
 render_nginx() {
@@ -197,6 +212,7 @@ main() {
     fi
 
     ensure_packages
+    ensure_cloudflare_credentials
 
     if certificate_exists "$NEXTCLOUD_FQDN" && [[ "$FORCE" -eq 0 ]]; then
         renew_dry_run "$NEXTCLOUD_FQDN"

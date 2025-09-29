@@ -154,7 +154,6 @@ apply_base_config() {
 enable_recommended_apps() {
     info "Enabling recommended Nextcloud apps"
     local apps=(
-        encryption
         files_downloadlimit
         files_reminders
         webhook_listeners

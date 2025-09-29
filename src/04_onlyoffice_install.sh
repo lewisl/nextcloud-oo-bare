@@ -12,7 +12,8 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 CONFIG_LOADER="${SCRIPT_DIR}/lib/config_loader.py"
 SYSTEM_CONFIG_DIR="/etc/nextcloud-onlyoffice"
 PARAMS_FILE="${SYSTEM_CONFIG_DIR}/params.yaml"
-LOG_FILE="/var/log/nextcloud-install.log"
+DEFAULT_LOG_FILE="/var/log/nextcloud-install.log"
+LOG_FILE="${NEXTCLOUD_ONLYOFFICE_LOG_FILE:-$DEFAULT_LOG_FILE}"
 APT_LIST="/etc/apt/sources.list.d/onlyoffice.list"
 KEYRING="/usr/share/keyrings/onlyoffice.gpg"
 LOCAL_JSON="/etc/onlyoffice/documentserver/local.json"
@@ -55,6 +56,27 @@ success() {
 abort() {
     error "$1"
     exit 1
+}
+
+init_log_file() {
+    local target_dir
+    local fallback_log="${PROJECT_ROOT}/nextcloud-install.log"
+
+    target_dir="$(dirname "$LOG_FILE")"
+    if mkdir -p "$target_dir" 2>/dev/null && touch "$LOG_FILE" 2>/dev/null; then
+        chmod 640 "$LOG_FILE" 2>/dev/null || true
+        return
+    fi
+
+    printf "[WARN] Unable to use log file %s; falling back to %s\n" "$LOG_FILE" "$fallback_log" >&2
+    LOG_FILE="$fallback_log"
+    target_dir="$(dirname "$LOG_FILE")"
+    mkdir -p "$target_dir" 2>/dev/null || true
+    if ! touch "$LOG_FILE" 2>/dev/null; then
+        printf "[ERROR] Failed to create fallback log file at %s\n" "$LOG_FILE" >&2
+        exit 1
+    fi
+    chmod 640 "$LOG_FILE" 2>/dev/null || true
 }
 
 check_root() {
@@ -197,7 +219,7 @@ install_documentserver() {
 configure_local_json() {
     local secure_link="${1:-}"
     info "Configuring DocumentServer local.json"
-    python3 -m src.lib.configure_onlyoffice render-local-json \
+    PYTHONPATH="$PROJECT_ROOT" python3 -m src.lib.configure_onlyoffice render-local-json \
         --template "$LOCAL_JSON_TEMPLATE" \
         --output "$LOCAL_JSON" \
         --nextcloud-fqdn "$NEXTCLOUD_FQDN" \
@@ -235,7 +257,7 @@ configure_ds_conf() {
     fi
 
     local rendered_secret
-    if ! rendered_secret=$(python3 -m src.lib.configure_onlyoffice render-ds-conf \
+    if ! rendered_secret=$(PYTHONPATH="$PROJECT_ROOT" python3 -m src.lib.configure_onlyoffice render-ds-conf \
         --template "$DS_CONF_TEMPLATE" \
         --output "$DS_CONF" \
         --existing "$DS_CONF"); then
@@ -267,6 +289,21 @@ initialize_database() {
     if ! PGPASSWORD="$ONLYOFFICE_DB_PASSWORD" psql -h localhost -U "$ONLYOFFICE_DB_USER" -d "$ONLYOFFICE_DB_NAME" -f "$POSTGRES_SCHEMA_DIR/createdb.sql" >>"$LOG_FILE" 2>&1; then
         abort "Failed to initialize OnlyOffice database schema"
     fi
+}
+
+reload_nginx() {
+    if ! command -v nginx >/dev/null 2>&1; then
+        return
+    fi
+    if ! systemctl list-unit-files nginx.service >/dev/null 2>&1; then
+        return
+    fi
+
+    info "Restarting nginx to adopt DocumentServer include"
+    if ! nginx -t >>"$LOG_FILE" 2>&1; then
+        abort "nginx configuration test failed; see $LOG_FILE"
+    fi
+    systemctl restart nginx >>"$LOG_FILE" 2>&1 || abort "Failed to restart nginx"
 }
 
 restart_documentserver() {
@@ -303,9 +340,8 @@ summarise() {
 }
 
 main() {
+    init_log_file
     check_root
-    touch "$LOG_FILE"
-    chmod 640 "$LOG_FILE"
     ensure_params_file
     load_params
     ensure_ds_account
@@ -315,6 +351,7 @@ main() {
     preseed_debconf
     install_documentserver
     configure_ds_conf
+    reload_nginx
     configure_local_json "$SECURE_LINK_SECRET"
     initialize_database
     restart_documentserver
