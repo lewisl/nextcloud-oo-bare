@@ -30,19 +30,13 @@ When Hetzner rebuilds the test instance everything on disk is wiped, including `
 
 ## 3. Re-run Automation
 
-Before running the automation, update the deployment parameters and let the system prep script generate credentials:
+With the repo checked out, kick off the automation with the required parameters. The system prep script copies the template (if needed), writes your domain/email settings, and auto-generates all credentials in a single run:
 
-1. Run `sudo ./src/01_system_prep.sh` once. If `/etc/nextcloud-onlyoffice/params.yaml` is missing, the script copies the template and exits with a warning.
-2. Edit `/etc/nextcloud-onlyoffice/params.yaml` (root only) and replace the placeholder values for:
-   - `deployment.base_domain`
-   - `deployment.nextcloud_domain` (should be `docs.<base_domain>`)
-   - `deployment.admin_email` and `deployment.letsencrypt_email`
-3. Re-run `sudo ./src/01_system_prep.sh`. The script now auto-generates secure secrets for the Nextcloud admin account, both database users, and the JWT. A summary is written to `/root/nextcloud-onlyoffice-secrets.txt` for safekeeping.
-
-With the repo checked out:
 ```bash
 cd /srv/collab
-sudo ./src/01_system_prep.sh
+sudo ./src/01_system_prep.sh -d test-collab-site.com \
+  -a lewis@neilson-levin.org \
+  -m lewis@neilson-levin.org
 sudo ./src/02_database_setup.sh
 sudo ./src/03_nextcloud_install.sh
 sudo ./src/04_onlyoffice_install.sh   # fix outstanding issues before relying on this step

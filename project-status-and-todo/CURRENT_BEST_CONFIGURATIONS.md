@@ -5,8 +5,9 @@ This document maintains the current best versions of all important configuration
 ## Deployment Parameters Template
 
 - **Template path:** `configs/params.yaml`
-- **Install location:** `/etc/nextcloud-onlyoffice/params.yaml` (copied by `src/01_system_prep.sh` on first run)
-- **Placeholders:** every value defaults to a `CHANGE_ME_*` token so administrators must supply the real base domain and contact emails before continuing. During the first successful run, `src/01_system_prep.sh` now auto-generates secure credentials for the Nextcloud admin account, both database users, and the shared JWT secret, writing the results back to `/etc/nextcloud-onlyoffice/params.yaml`.
+- **Install location:** `/etc/nextcloud-onlyoffice/params.yaml` (copied automatically by `src/01_system_prep.sh` if missing)
+- **CLI inputs:** run `01_system_prep.sh` with `-d <base_domain> -a <admin_email> -m <letsencrypt_email>` so the script can populate the deployment metadata before generating secrets.
+- **Placeholders:** during the first successful run, the script auto-generates secure credentials for the Nextcloud admin account, both database users, and the shared JWT secret, saving everything back to `/etc/nextcloud-onlyoffice/params.yaml`.
 - **Secrets summary:** the system prep script writes a root-only digest of the current credentials to `/root/nextcloud-onlyoffice-secrets.txt` (mode `0600`) so operators can retrieve the values without opening the YAML file.
 - **Reminder:** the Nextcloud FQDN must begin with `docs.` and the OnlyOffice FQDN with `onlyoffice.` to satisfy validation in `src/lib/config_loader.py`.
 - **Package note:** `src/01_system_prep.sh` installs `php-apcu`/`php-apcu-bc` so the `memcache.local` setting resolves without manual intervention. Keep `php8.3-gmp` and `libmagickcore-6.q16-7-extra` on the required package list so WebAuthn/SFTP features and Imagick SVG rendering stay available after rebuilds.

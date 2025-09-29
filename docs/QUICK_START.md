@@ -14,11 +14,14 @@ Before running any scripts, ensure you have:
 Gather this information before starting:
 
 ```bash
-# Your domain name
-DOMAIN="cloud.example.com"
+# Base domain (scripts derive docs.<domain>)
+BASE_DOMAIN="example.com"
 
-# Your email for Let's Encrypt
-EMAIL="admin@example.com"
+# Administrative contact email
+ADMIN_EMAIL="admin@example.com"
+
+# Let's Encrypt registration email
+LE_EMAIL="admin@example.com"
 
 # Your server's IPv4 address
 SERVER_IP="1.2.3.4"
@@ -30,10 +33,11 @@ Run these commands **in order** on your server:
 
 ### 1. System Setup
 ```bash
-./01_system_prep.sh
+./01_system_prep.sh -d YOURDOMAIN.COM -a admin@YOURDOMAIN.COM -m admin@YOURDOMAIN.COM
 ```
 **Time:** ~5 minutes  
-**Verifies:** All services running, PHP modules loaded
+**Verifies:** All services running, PHP modules loaded  
+**Generates:** Database/Admin/JWT credentials recorded in `/root/nextcloud-onlyoffice-secrets.txt`
 
 ### 2. Database Setup
 ```bash

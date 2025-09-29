@@ -26,6 +26,26 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
+CLI_BASE_DOMAIN=""
+CLI_ADMIN_EMAIL=""
+CLI_LETSENCRYPT_EMAIL=""
+
+usage() {
+    cat <<'USAGE'
+Usage: 01_system_prep.sh -d <base_domain> -a <admin_email> -m <letsencrypt_email>
+
+Required options:
+  -d <base_domain>         Base domain (e.g., example.com)
+  -a <admin_email>         Administrative contact email (Nextcloud notifications)
+  -m <letsencrypt_email>   Let's Encrypt registration/renewal email
+
+Optional:
+  -h, --help               Show this help message
+
+This script must run as root.
+USAGE
+}
+
 log() {
     local message="$1"
     printf "${GREEN}[%s]${NC} %s\n" "$(date +'%Y-%m-%d %H:%M:%S')" "$message" | tee -a "$LOG_FILE"
@@ -52,6 +72,54 @@ abort() {
     exit 1
 }
 
+parse_args() {
+    OPTIND=1
+    local opt
+    while getopts ":d:a:m:h-:" opt; do
+        case "$opt" in
+            d)
+                CLI_BASE_DOMAIN="$OPTARG"
+                ;;
+            a)
+                CLI_ADMIN_EMAIL="$OPTARG"
+                ;;
+            m)
+                CLI_LETSENCRYPT_EMAIL="$OPTARG"
+                ;;
+            h)
+                usage
+                exit 0
+                ;;
+            -)
+                case "$OPTARG" in
+                    help)
+                        usage
+                        exit 0
+                        ;;
+                    *)
+                        abort "Unknown option --$OPTARG"
+                        ;;
+                esac
+                ;;
+            :)
+                abort "Option -$OPTARG requires a value"
+                ;;
+            \?)
+                abort "Unknown option -$OPTARG"
+                ;;
+        esac
+    done
+    shift $((OPTIND - 1))
+    if [[ $# -gt 0 ]]; then
+        abort "Unexpected positional arguments: $*"
+    fi
+
+    if [[ -z "$CLI_BASE_DOMAIN" || -z "$CLI_ADMIN_EMAIL" || -z "$CLI_LETSENCRYPT_EMAIL" ]]; then
+        usage
+        abort "Options -d, -a, and -m are all required."
+    fi
+}
+
 check_root() {
     [[ $EUID -eq 0 ]] || abort "This script must run as root. Use sudo."
 }
@@ -63,11 +131,51 @@ ensure_params_file() {
         if [[ -f "$SAMPLE_PARAMS" ]]; then
             cp "$SAMPLE_PARAMS" "$PARAMS_FILE"
             chmod 640 "$PARAMS_FILE"
-            warning "Parameter file missing. A template was copied to $PARAMS_FILE. Update it with production values and rerun."
-            exit 2
+            warning "Parameter file missing. A template was copied to $PARAMS_FILE."
+        else
+            abort "Parameter file $PARAMS_FILE not found and template missing."
         fi
-        abort "Parameter file $PARAMS_FILE not found. Create it and rerun."
     fi
+}
+
+update_params_from_cli() {
+    CLI_BASE_DOMAIN="$CLI_BASE_DOMAIN" \
+    CLI_ADMIN_EMAIL="$CLI_ADMIN_EMAIL" \
+    CLI_LETSENCRYPT_EMAIL="$CLI_LETSENCRYPT_EMAIL" \
+    python3 <<'PY'
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+import yaml
+
+path = Path("/etc/nextcloud-onlyoffice/params.yaml")
+
+base = os.environ.get("CLI_BASE_DOMAIN", "").strip()
+admin_email = os.environ.get("CLI_ADMIN_EMAIL", "").strip()
+letsencrypt_email = os.environ.get("CLI_LETSENCRYPT_EMAIL", "").strip()
+
+if not base or not admin_email or not letsencrypt_email:
+    raise SystemExit("CLI parameters missing when updating params.yaml")
+
+with path.open("r", encoding="utf-8") as handle:
+    data = yaml.safe_load(handle) or {}
+
+deployment = data.setdefault("deployment", {})
+
+deployment["base_domain"] = base
+deployment["nextcloud_domain"] = f"docs.{base}"
+deployment["onlyoffice_domain"] = f"onlyoffice.{base}"
+deployment["admin_email"] = admin_email
+deployment["letsencrypt_email"] = letsencrypt_email
+
+tmp_path = path.with_suffix(".tmp")
+with tmp_path.open("w", encoding="utf-8") as handle:
+    yaml.safe_dump(data, handle, sort_keys=False)
+tmp_path.replace(path)
+path.chmod(0o640)
+PY
 }
 
 ensure_credentials() {
@@ -302,10 +410,12 @@ summarise() {
 }
 
 main() {
+    parse_args "$@"
     check_root
     touch "$LOG_FILE"
     chmod 640 "$LOG_FILE"
     ensure_params_file
+    update_params_from_cli
     ensure_credentials
     # reload after secrets generation
     reset_params_cache
