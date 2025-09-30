@@ -207,9 +207,12 @@ install_documentserver() {
     if ! DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTS[@]}" install "${apt_opts[@]}" -y onlyoffice-documentserver >>"$LOG_FILE" 2>&1; then
         warning "Package install reported an error, attempting to repair configuration"
         prepare_documentserver_prereqs
+        DEBIAN_FRONTEND=noninteractive apt-get -f install -y >>"$LOG_FILE" 2>&1 || true
         if ! DEBIAN_FRONTEND=noninteractive dpkg --force-confdef --force-confold --configure -a >>"$LOG_FILE" 2>&1; then
             abort "dpkg --configure -a failed; check $LOG_FILE for details"
         fi
+        # re-attempt install once after repair
+        DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTS[@]}" install "${apt_opts[@]}" -y onlyoffice-documentserver >>"$LOG_FILE" 2>&1 || true
     fi
     for svc in "${DS_SERVICES[@]}"; do
         systemctl enable "$svc" >>"$LOG_FILE" 2>&1 || warning "Service $svc unavailable to enable"
@@ -316,14 +319,16 @@ restart_documentserver() {
 
 healthcheck() {
     info "Running DocumentServer health checks"
+    # Ensure RabbitMQ is up; DS depends on it
+    systemctl is-active --quiet rabbitmq-server || systemctl restart rabbitmq-server >>"$LOG_FILE" 2>&1 || true
     local attempt=0
-    local max_attempts=15
+    local max_attempts=30
     until curl -fsS --max-time 10 http://127.0.0.1:8080/healthcheck >/dev/null 2>&1; do
         ((attempt++))
         if (( attempt >= max_attempts )); then
             abort "DocumentServer healthcheck failed after ${max_attempts} attempts"
         fi
-        sleep 2
+        sleep 3
     done
     curl -fsS --max-time 30 http://127.0.0.1:8080/hosting/discovery >/dev/null 2>&1 || warning "Hosting discovery returned non-200 response"
 }

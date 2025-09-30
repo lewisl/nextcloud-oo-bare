@@ -1,7 +1,7 @@
 # Integrated Project Plan — Nextcloud + OnlyOffice Automation
 
-**Last updated:** 2025-09-28  
-**Maintainer:** Codex Toolkit Project  
+**Last updated:** 2025-09-30
+**Maintainer:** Codex Toolkit Project
 **Scope:** Test VPS (`docs.test-collab-site.com`) leading to production (`docs.bedfordfallsbbbl.org`)
 
 ---
@@ -10,15 +10,17 @@
 - ✅ Nextcloud 31.0.9 on Ubuntu 24.04 (arm64) with MariaDB, Redis, PHP-FPM, nginx reverse proxy.
 - ✅ OnlyOffice Document Server 9.0.4 listening locally on 8080 and exposed via `/onlyoffice/` subpath.
 - ✅ Cloudflare proxy enabled; HTTPS served by Let’s Encrypt with automated renewal (`certbot.timer`).
-- ✅ Scripts `01`–`07` exist and have previously succeeded end-to-end on a clean host.
+- ✅ Scripts `01`–`07` succeeded end-to-end in a single pass on a clean host (2025-09-30) with zero manual intervention.
 - ✅ `src/99_diagnostics.sh` updated for correct service detection, OCC checks, SSL discovery, and non-interactive operation.
-- ⚠️ Nextcloud admin panel flags: missing maintenance window, pending mimetype migration, security headers, PHP `clear_env`, SMTP config, missing `php8.3-gmp`, Imagick lacks SVG.
+- ✅ Nextcloud admin diagnostics: All checks passed (no warnings).
 
 ## 2. Completed Milestones
 1. Single-domain architecture finalized; `/onlyoffice/` reverse proxy validated with Cloudflare in front.
 2. OnlyOffice JWT + secure link synchronization automated; confirmed collaborative editing.
 3. Same-tab editing UX verified in-browser; navigation regression resolved.
 4. Certbot automation operational with timestamps logged in `journalctl -u certbot.service`.
+
+5. 2025-09-30: First end-to-end one-pass deployment (scripts 01–07) succeeded with perfect web UI verification; OnlyOffice connector OK; Cloudflare Full (Strict) with Let’s Encrypt DNS-01.
 
 ## 3. Active Workstreams & Priority Tasks
 
@@ -35,10 +37,10 @@
 - [x] Update PHP-FPM pool (`clear_env = no`), install `php8.3-gmp`, ensure Imagick SVG support (`libmagickcore-6.q16-6-extra`).
 - [x] Define baseline SMTP config guidance (placeholder until production mail host chosen).
 
-### C. Script Validation Cycle (Next Major Push)
-- [ ] Rebuild test VPS, clone repo, and execute scripts `01` → `07` with zero manual intervention.
+### C. Script Validation Cycle (Completed 2025-09-30)
+- [x] Rebuild test VPS, clone repo, and execute scripts `01` → `07` with zero manual intervention. (2025-09-30)
 - [ ] Capture stdout/stderr logs for each script run; archive under `logs/` or `project-status-and-todo/test-runs/`.
-- [ ] Run internal validation (`occ` checks, curl healthchecks, updated diagnostics script) and request web UI confirmation.
+- [x] Run internal validation (`occ` checks, curl healthchecks, updated diagnostics script) and request web UI confirmation. (2025-09-30)
 - [ ] Update documentation/checklists to reflect actual fully automated run.
 
 ### D. Documentation Packaging (Parallel after C)

@@ -404,6 +404,17 @@ summarise() {
     printf "  • Admin email: %s\n" "$ADMIN_EMAIL"
     printf "  • Nextcloud admin user: %s\n" "$NEXTCLOUD_ADMIN_USER"
     printf "  • Nextcloud admin password: %s\n" "$NEXTCLOUD_ADMIN_PASSWORD"
+
+    printf "${CYAN}${BOLD}Service health${NC}:\n" | tee -a "$LOG_FILE"
+    services=(nginx php8.3-fpm mariadb postgresql redis-server rabbitmq-server fail2ban)
+    for s in "${services[@]}"; do
+        if systemctl is-active --quiet "$s"; then
+            printf "  • %s: OK\n" "$s" | tee -a "$LOG_FILE"
+        else
+            printf "  • %s: NOT ACTIVE\n" "$s" | tee -a "$LOG_FILE"
+        fi
+    done
+
     printf "${CYAN}${BOLD}Next steps${NC}:\n"
     printf "  1. Run ./02_database_setup.sh\n"
     printf "  2. Continue with application installation scripts\n"
