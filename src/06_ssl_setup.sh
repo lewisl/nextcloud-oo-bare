@@ -189,7 +189,7 @@ summarise() {
     printf "${CYAN}${BOLD}Certificate Path:${NC} /etc/letsencrypt/live/%s\n" "$NEXTCLOUD_FQDN"
     printf "${CYAN}${BOLD}Renewal Timer:${NC} %s\n" "$(systemctl is-enabled certbot.timer 2>/dev/null || echo disabled)"
     printf "${CYAN}${BOLD}Next steps:${NC}\n"
-    printf "  1. Run ./src/07_integration_config.sh once refactored.\n"
+    printf "  1. Run ./src/07_integration_config.sh\n"
 }
 
 main() {

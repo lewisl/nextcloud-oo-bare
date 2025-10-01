@@ -68,7 +68,7 @@ load_params() {
 }
 
 occ() {
-    sudo -u www-data php /var/www/nextcloud/occ "$@"
+    sudo -u www-data $OCC_BIN "$@"
 }
 
 read_ds_jwt() {
@@ -92,6 +92,55 @@ except Exception:
 if secret:
     print(secret)
 PY
+}
+
+manual_install_onlyoffice() {
+    # Fallback installer for the ONLYOFFICE connector when appstore is unavailable
+    # Env override: ONLYOFFICE_CONNECTOR_VERSION (default 9.11.0)
+    local version="${ONLYOFFICE_CONNECTOR_VERSION:-9.11.0}"
+    local url="https://github.com/ONLYOFFICE/onlyoffice-nextcloud/releases/download/v${version}/onlyoffice-${version}.tar.gz"
+
+    info "Attempting manual ONLYOFFICE app install (v${version}) from GitHub releases"
+    local tmpd
+    tmpd=$(mktemp -d /tmp/onlyoffice-app.XXXXXX)
+    pushd "$tmpd" >/dev/null || return 1
+
+    if ! curl -fsSL --max-time 120 -o "onlyoffice-${version}.tar.gz" "$url"; then
+        warning "Failed to download ONLYOFFICE app tarball from GitHub"
+        popd >/dev/null || true
+        rm -rf "$tmpd"
+        return 1
+    fi
+
+    if ! tar -xzf "onlyoffice-${version}.tar.gz"; then
+        warning "Failed to extract ONLYOFFICE app tarball"
+        popd >/dev/null || true
+        rm -rf "$tmpd"
+        return 1
+    fi
+
+    local srcdir=""
+    if [[ -d "onlyoffice" ]]; then
+        srcdir="onlyoffice"
+    else
+        srcdir=$(find . -maxdepth 1 -type d -name 'onlyoffice*' | head -n1)
+    fi
+
+    if [[ -z "$srcdir" || ! -f "$srcdir/appinfo/info.xml" ]]; then
+        warning "Downloaded archive does not contain a valid ONLYOFFICE app"
+        popd >/dev/null || true
+        rm -rf "$tmpd"
+        return 1
+    fi
+
+    rm -rf "/var/www/nextcloud/apps/onlyoffice"
+    mv "$srcdir" "/var/www/nextcloud/apps/onlyoffice"
+    chown -R www-data:www-data "/var/www/nextcloud/apps/onlyoffice"
+
+    popd >/dev/null || true
+    rm -rf "$tmpd"
+    success "Manual ONLYOFFICE app files installed to apps/onlyoffice"
+    return 0
 }
 
 ensure_onlyoffice_app() {
@@ -122,13 +171,18 @@ PY
             ;;
         missing)
             if occ app:install onlyoffice >/tmp/occ_install.log 2>&1; then
-                success "OnlyOffice app installed"
+                success "OnlyOffice app installed via appstore"
             else
                 if grep -qi "already installed" /tmp/occ_install.log 2>/dev/null; then
                     warning "OnlyOffice app already installed"
                 else
-                    cat /tmp/occ_install.log >&2 || true
-                    abort "Failed to install OnlyOffice app"
+                    warning "Appstore install failed; attempting manual install fallback"
+                    if manual_install_onlyoffice; then
+                        success "OnlyOffice app installed manually"
+                    else
+                        cat /tmp/occ_install.log >&2 || true
+                        abort "Failed to install OnlyOffice app (appstore + manual fallback)"
+                    fi
                 fi
             fi
             occ app:enable onlyoffice >/dev/null 2>&1 || true
@@ -285,7 +339,7 @@ summarise() {
     success "Integration configuration complete"
     printf "${CYAN}${BOLD}DocumentServerUrl${NC}: %s\n" "$(occ config:app:get onlyoffice DocumentServerUrl)"
     printf "${CYAN}${BOLD}InternalUrl${NC}: %s\n" "$(occ config:app:get onlyoffice DocumentServerInternalUrl)"
-    printf "${CYAN}${BOLD}StorageUrl${NC}: %s\n" "$(occ config:app:get onlyoffice storage_url)"
+    printf "${CYAN}${BOLD}StorageUrl${NC}: %s\n" "$(occ config:app:get onlyoffice StorageUrl)"
 }
 
 main() {

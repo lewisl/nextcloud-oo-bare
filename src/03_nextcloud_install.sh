@@ -141,7 +141,18 @@ run_cli_install() {
 
 apply_base_config() {
     info "Applying base Nextcloud configuration"
-    sudo -u www-data php "$NEXTCLOUD_ROOT/occ" config:system:set trusted_domains 1 --value="$NEXTCLOUD_FQDN" >>"$LOG_FILE" 2>&1
+    # Add NEXTCLOUD_FQDN to trusted_domains only if missing; append at next index starting from 0
+    existing=$(sudo -u www-data php "$NEXTCLOUD_ROOT/occ" config:system:get trusted_domains 2>/dev/null || true)
+    if echo "$existing" | grep -Fxq "$NEXTCLOUD_FQDN"; then
+        : # already present
+    else
+        if [[ -z "$existing" ]]; then
+            idx=0
+        else
+            idx=$(echo "$existing" | awk 'NF{c++} END{print c+0}')
+        fi
+        sudo -u www-data php "$NEXTCLOUD_ROOT/occ" config:system:set trusted_domains "$idx" --value="$NEXTCLOUD_FQDN" >>"$LOG_FILE" 2>&1
+    fi
     sudo -u www-data php "$NEXTCLOUD_ROOT/occ" config:system:set overwrite.cli.url --value="https://$NEXTCLOUD_FQDN" >>"$LOG_FILE" 2>&1
     sudo -u www-data php "$NEXTCLOUD_ROOT/occ" config:system:set default_phone_region --value="US" >>"$LOG_FILE" 2>&1 || true
     sudo -u www-data php "$NEXTCLOUD_ROOT/occ" config:system:set memcache.local --value="\OC\Memcache\APCu" >>"$LOG_FILE" 2>&1
