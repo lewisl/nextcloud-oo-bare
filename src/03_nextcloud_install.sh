@@ -168,6 +168,7 @@ enable_recommended_apps() {
         files_downloadlimit
         files_reminders
         webhook_listeners
+        onlyoffice
     )
 
     for app in "${apps[@]}"; do
@@ -175,6 +176,11 @@ enable_recommended_apps() {
             warning "Unable to enable app '$app' (see log for details)"
         fi
     done
+
+    info "Disabling first-run wizard"
+    if ! sudo -u www-data php "$NEXTCLOUD_ROOT/occ" app:disable firstrunwizard >>"$LOG_FILE" 2>&1; then
+        warning "Unable to disable firstrunwizard app (see log for details)"
+    fi
 }
 
 configure_maintenance_window() {
