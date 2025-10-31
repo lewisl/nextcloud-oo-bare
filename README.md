@@ -6,6 +6,31 @@ A comprehensive toolkit for installing Nextcloud with OnlyOffice Document Server
 
 This project provides automated installation scripts for deploying a production-ready Nextcloud instance with integrated OnlyOffice Document Server. The installation is designed to replicate the functionality of containerized solutions like Cloudron while providing direct access to the underlying PHP code for customization.
 
+## The Unfortunate Conclusion
+
+While the scripts do work and successfully install NextCloud and Onlyoffice on a Linux VPS; the NextCloud application was not reliable enough to meet my needs.
+
+### Decision
+Adopt Sync.com for secure team file sync/sharing and retire the Nextcloud + OnlyOffice stack for production use.
+
+### Why this path
+- Reliability and recovery: Trash/version restore functions correctly in shared spaces without cryptic edge cases.
+- Security posture: E2EE by default; risk from web editing can be eliminated by using client‑side editing.
+- Cost and simplicity: Lower TCO than Pydio Enterprise or Tresorit; minimal ops burden.
+- Data residency and performance: Hosted in Canada; consistently fast and responsive.
+
+### Alternatives considered
+- Nextcloud + OnlyOffice: Rejected due to show‑stopping trashbin/version issues under server‑side encryption for shared/team folders.
+- Sync.com:  adopted for cost, valid EE2E implementation, Office Online editing or local syncing with Office apps editing.
+- Tresorit: Solid E2EE, not‑for‑profit discount available; ultimately pricier and less convenient than Sync.com for our use.
+- Proton Drive: Mac desktop sync client does not support shared folders (admitted limitation) — deal‑breaker.
+
+### Hetzner note
+Hetzner was an excellent learning experience: outstanding performance and value, even with extra latency to Germany — clearly ahead of DigitalOcean in our testing. We’re nonetheless prioritizing operational simplicity and recovery guarantees with Sync.com.
+
+### Closeout
+This project achieved its primary goal: selecting a dependable, secure, and maintainable team file platform. Sync.com meets the requirements at lower cost and complexity. The open‑source path provided valuable lessons, especially around encryption + shared folders + recovery, but SaaS is the right fit here.
+
 ## Key Features
 
 - **Bare Metal Installation**: No Docker, containers, or snap packages
